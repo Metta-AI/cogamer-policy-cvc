@@ -14,16 +14,17 @@ from cvc_policy.programs import _build_analysis_prompt, _parse_analysis
 
 
 def _make_context(**overrides) -> dict:
-    """Return a minimal valid context dict for _build_analysis_prompt."""
+    """Return a minimal valid context dict for _build_analysis_prompt.
+
+    Mirrors the shape produced by ``_summarize`` in ``programs.py``.
+    """
     base = {
         "step": 500,
         "agent_id": "a0",
         "hp": 80,
-        "hearts": 3,
-        "aligner": True,
-        "scrambler": False,
-        "miner": True,
-        "resources": {"carbon": 10, "oxygen": 5, "germanium": 0, "silicon": 3},
+        "inventory": {"heart": 3, "carbon": 2},
+        "team_resources": {"carbon": 10, "oxygen": 5, "germanium": 0, "silicon": 3},
+        "has_gear": True,
         "roles": "miner=4, aligner=2, scrambler=2",
         "position": (22, 44),
         "junctions": {"friendly": 3, "enemy": 5, "neutral": 2},
@@ -55,7 +56,7 @@ class TestBuildAnalysisPrompt:
         assert "HP=42" in prompt
 
     def test_includes_hearts(self):
-        prompt = _build_analysis_prompt(_make_context(hearts=5))
+        prompt = _build_analysis_prompt(_make_context(inventory={"heart": 5}))
         assert "Hearts=5" in prompt
 
     def test_includes_role(self):
@@ -66,17 +67,16 @@ class TestBuildAnalysisPrompt:
         prompt = _build_analysis_prompt(_make_context(position=(10, 20)))
         assert "(10, 20)" in prompt
 
-    def test_includes_gear_flags(self):
-        prompt = _build_analysis_prompt(_make_context(aligner=True, scrambler=False, miner=True))
-        assert "aligner=True" in prompt
-        assert "scrambler=False" in prompt
-        assert "miner=True" in prompt
+    def test_includes_gear_flag(self):
+        prompt = _build_analysis_prompt(_make_context(has_gear=True))
+        assert "Has role gear: True" in prompt
+        prompt2 = _build_analysis_prompt(_make_context(has_gear=False))
+        assert "Has role gear: False" in prompt2
 
     def test_includes_resources(self):
         res = {"carbon": 100, "oxygen": 50, "germanium": 0, "silicon": 25}
-        prompt = _build_analysis_prompt(_make_context(resources=res))
-        # The resources dict should be represented in the prompt
-        assert "carbon" in prompt or "100" in prompt
+        prompt = _build_analysis_prompt(_make_context(team_resources=res))
+        assert "carbon=100" in prompt
 
     def test_includes_team_roles(self):
         prompt = _build_analysis_prompt(_make_context(roles="miner=4, aligner=2, scrambler=2"))
@@ -124,13 +124,16 @@ class TestBuildAnalysisPrompt:
         assert isinstance(result, str)
 
     def test_missing_optional_keys_default_gracefully(self):
-        """Context missing 'role', 'position', 'stalled', 'oscillating', 'safe_distance' uses defaults."""
+        """Context missing optional keys uses defaults."""
         ctx = _make_context()
         del ctx["role"]
         del ctx["position"]
         del ctx["stalled"]
         del ctx["oscillating"]
         del ctx["safe_distance"]
+        del ctx["has_gear"]
+        del ctx["inventory"]
+        del ctx["team_resources"]
         prompt = _build_analysis_prompt(ctx)
         assert "unknown" in prompt
         assert isinstance(prompt, str)

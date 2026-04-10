@@ -227,15 +227,19 @@ def _summarize(gs: Any) -> dict:
 def _build_analysis_prompt(context: dict) -> str:
     """Build the LLM analysis prompt from extracted game context."""
     j = context["junctions"]
+    inv = context.get("inventory", {})
+    hearts = inv.get("heart", 0)
+    team_res = context.get("team_resources", {})
+    resources_str = ", ".join(f"{k}={v}" for k, v in sorted(team_res.items()))
     lines = [
         f"CvC game step {context['step']}/10000. 88x88 map, 8 agents per team.",
         "Score = junctions held over time. MAXIMIZE friendly junctions held.",
         "",
-        f"Agent {context['agent_id']}: HP={context['hp']}, Hearts={context['hearts']}, "
+        f"Agent {context['agent_id']}: HP={context['hp']}, Hearts={hearts}, "
         f"Role={context.get('role', 'unknown')}",
         f"Position: {context.get('position', 'unknown')}",
-        f"Gear: aligner={context['aligner']} scrambler={context['scrambler']} miner={context['miner']}",
-        f"Hub resources: {context['resources']}",
+        f"Has role gear: {context.get('has_gear', False)}",
+        f"Hub resources: {resources_str}",
         f"Team roles: {context.get('roles', 'unknown')}",
         f"Junctions: friendly={j['friendly']} enemy={j['enemy']} neutral={j['neutral']}",
         f"Stalled: {context.get('stalled', False)}, Oscillating: {context.get('oscillating', False)}",
