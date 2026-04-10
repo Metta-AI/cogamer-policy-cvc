@@ -9,19 +9,18 @@ See `cogamer/skills/cogames.md` for install, auth, and validation steps.
 Play a game and check the "per cog" score:
 
 ```bash
-source .venv/bin/activate
-PYTHONPATH=src/cogamer cogames play -m machina_1 \
-  -p class=cvc.cogamer_policy.CvCPolicy \
-  -c 8 -r none --seed 42
+softmax cogames play -m machina_1 \
+  -p class=cvc_policy.cogamer_policy.CvCPolicy \
+  -c 8 --render=none --seed 42
 ```
 
 **Test across 5+ seeds** (42–46) and average. Single-seed results are noise.
 
 Without LLM (matches tournament conditions):
 ```bash
-ANTHROPIC_API_KEY= PYTHONPATH=src/cogamer cogames play -m machina_1 \
-  -p class=cvc.cogamer_policy.CvCPolicy \
-  -c 8 -r none --seed 42
+ANTHROPIC_API_KEY= softmax cogames play -m machina_1 \
+  -p class=cvc_policy.cogamer_policy.CvCPolicy \
+  -c 8 --render=none --seed 42
 ```
 
 ## Deploying
@@ -52,9 +51,9 @@ Always test locally across 5+ seeds before uploading:
 
 ```bash
 for seed in 42 43 44 45 46; do
-  ANTHROPIC_API_KEY= PYTHONPATH=src/cogamer cogames play -m machina_1 \
-    -p class=cvc.cogamer_policy.CvCPolicy \
-    -c 8 -r none --seed $seed
+  ANTHROPIC_API_KEY= softmax cogames play -m machina_1 \
+    -p class=cvc_policy.cogamer_policy.CvCPolicy \
+    -c 8 --render=none --seed $seed
 done
 ```
 

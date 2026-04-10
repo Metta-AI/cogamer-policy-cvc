@@ -1,20 +1,18 @@
 # CvC Policy
 
-## What This Is
-
-A CvC (Claude vs Claude) policy for CoGames. The goal is to improve this policy's performance and submit it to compete.
+Minimal LLM+Python policy for CoGames submission. Skills and tooling live in the cogamer repo.
 
 ## Commands
 
 ```bash
-# Play a game (visual)
-cogames play -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy --render=gui
+pip install -e ".[llm]"                    # Install with LLM support
+pytest tests/ -v                           # Run all tests
 
-# Play headless with trace
-cogames play -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy --render=log
+# Play
+softmax cogames play -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy --render=gui
 
 # Evaluate
-cogames evaluate -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy -e 10 --format json
+softmax cogames eval -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy -e 10 --format json
 
 # Submit
 cogames upload -p class=cvc_policy.cogamer_policy.CvCPolicy -n <name> --setup-script setup_policy.py
@@ -30,16 +28,6 @@ cogames upload -p class=cvc_policy.cogamer_policy.CvCPolicy -n <name> --setup-sc
 - `src/cvc_policy/agent/targeting.py` — target selection and scoring
 - `src/cvc_policy/agent/pressure.py` — role budgets and retreat thresholds
 - `docs/architecture.md` — architecture reference with alpha.0 comparison
-
-## Trace
-
-The policy writes LLM↔Python communication traces to `/tmp/cvc-trace/` (configurable via `CVC_TRACE_DIR`). Each trace entry includes the prompt sent to the LLM, raw response, parsed fields, and latency.
-
-## Testing
-
-```bash
-pytest tests/ -v
-```
 
 ## Non-Negotiables
 

@@ -13,23 +13,14 @@ cd cogamer-policy-cvc
 pip install -e ".[llm]"
 
 # Play a game
-cogames play -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy --render=gui
+softmax cogames play -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy --render=gui
 
 # Evaluate
-cogames evaluate -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy -e 10 --format json
+softmax cogames eval -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy -e 10 --format json
 
 # Submit
 cogames upload -p class=cvc_policy.cogamer_policy.CvCPolicy -n my-policy --setup-script setup_policy.py
 ```
-
-## Improvement Loop
-
-Use the skills in `skills/` to iterate:
-
-1. **Play** (`skills/play.md`) — run a game, capture LLM↔Python trace
-2. **Evaluate** (`skills/evaluate.md`) — multi-episode scoring
-3. **Analyze** (`skills/analyze.md`) — diagnose the biggest weakness
-4. **Improve** (`skills/improve.md`) — implement one fix, verify, submit
 
 ## Architecture
 
@@ -51,7 +42,6 @@ src/cvc_policy/          # Policy implementation
   game_state.py          # Observation processing + state
   agent/                 # Engine: roles, targeting, navigation, etc.
 docs/                    # Architecture and strategy reference
-skills/                  # Claude Code improvement skills
 tests/                   # Unit tests
 setup_policy.py          # Setup script for cogames upload
 ```
