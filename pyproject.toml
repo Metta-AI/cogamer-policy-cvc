@@ -16,12 +16,18 @@ dependencies = [
 llm = ["anthropic>=0.64.0"]
 test = ["pytest>=8.0"]
 
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-timeout", "pytest-asyncio"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+timeout = 10
+addopts = "-m 'not llm'"
+markers = ["llm: tests that hit the LLM or spawn subprocesses; excluded by default. Run with `pytest -m llm` or `pytest -m ''`."]
 
 [tool.uv.sources]
 cogames = {git = "https://github.com/Metta-AI/cogames.git"}

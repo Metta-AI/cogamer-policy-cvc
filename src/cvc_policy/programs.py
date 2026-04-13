@@ -350,7 +350,7 @@ def all_programs() -> dict[str, Program]:
             system=_build_analysis_prompt,
             parser=_parse_analysis,
             config={
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 200,
                 "temperature": 0.2,
                 "max_turns": 1,

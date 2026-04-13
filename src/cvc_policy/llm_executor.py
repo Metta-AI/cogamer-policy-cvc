@@ -30,7 +30,7 @@ class LLMExecutor:
 
         # 3. Config
         max_turns = program.config.get("max_turns", 1)
-        model = program.config.get("model", "claude-sonnet-4-20250514")
+        model = program.config.get("model", "claude-haiku-4-5-20251001")
         max_tokens = program.config.get("max_tokens", 1024)
         temperature = program.config.get("temperature", 0.2)
 

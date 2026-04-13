@@ -9,19 +9,22 @@ Architecture:
          └─ CvCPolicyImpl (StatefulPolicyImpl)
               └─ GameState (observation processing + mutable state)
               └─ Program table (step/heal/retreat/mine/align/scramble/explore)
-              └─ LLM brain (periodic analysis via "analyze" program)
+              └─ LLMWorker thread (per-agent, episode-long Anthropic session,
+                 reads logs from the agent's queue and patches strategic knobs)
 """
 
 from __future__ import annotations
 
 import json
 import os
+import queue
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from cvc_policy.game_state import GameState
+from cvc_policy.llm_worker import LLMWorker
 from cvc_policy.programs import all_programs
 from mettagrid.policy.policy import MultiAgentPolicy, StatefulAgentPolicy, StatefulPolicyImpl
 from mettagrid.policy.policy_env_interface import PolicyEnvInterface
@@ -29,13 +32,12 @@ from mettagrid.simulator import Action
 from mettagrid.simulator.interface import AgentObservation
 
 try:
-    from cvc_policy.llm_executor import LLMExecutor
     from cvc_policy.proglet import Program
 except ImportError:
-    LLMExecutor = None  # type: ignore[assignment,misc]
     Program = None  # type: ignore[assignment,misc]
 
-_LLM_INTERVAL = 500
+_HEARTBEAT_EVERY = 200
+_QUEUE_MAX = 1000
 _TRACE_DIR = os.environ.get("CVC_TRACE_DIR", "/tmp/cvc-trace")
 
 
@@ -44,11 +46,15 @@ class CvCAgentState:
     """All mutable state for one agent."""
 
     game_state: GameState | None = None
-    last_llm_step: int = 0
-    llm_interval: int = _LLM_INTERVAL
     llm_latencies: list[float] = field(default_factory=list)
     resource_bias_from_llm: str | None = None
+    llm_role_override: str | None = None
+    llm_objective: str | None = None
     llm_log: list[dict[str, Any]] = field(default_factory=list)
+    snapshot_log: list[dict[str, Any]] = field(default_factory=list)
+    experience: list[dict[str, Any]] = field(default_factory=list)
+    log_queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=_QUEUE_MAX))
+    worker: LLMWorker | None = None
 
 
 class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
@@ -59,13 +65,13 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         policy_env_info: PolicyEnvInterface,
         agent_id: int,
         programs: dict[str, Program],
-        llm_executor: LLMExecutor | None = None,
+        llm_client: Any | None = None,
         game_id: str = "",
     ) -> None:
         self._policy_env_info = policy_env_info
         self._agent_id = agent_id
         self._programs = programs
-        self._llm_executor = llm_executor
+        self._llm_client = llm_client
         self._game_id = game_id
 
     def initial_agent_state(self) -> CvCAgentState:
@@ -73,10 +79,15 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             self._policy_env_info,
             agent_id=self._agent_id,
         )
-        return CvCAgentState(game_state=gs)
+        state = CvCAgentState(game_state=gs)
+        # Wire log_to_llm onto GameState so code programs can push events.
+        gs.log_to_llm = lambda event: _log(state.log_queue, event)  # type: ignore[attr-defined]
+        if self._llm_client is not None:
+            state.worker = LLMWorker(self._llm_client, self._agent_id, state)
+            state.worker.start()
+        return state
 
     def _invoke_sync(self, name: str, *args: Any) -> Any:
-        """Synchronous program invocation for code programs."""
         prog = self._programs[name]
         if prog.executor == "code" and prog.fn is not None:
             return prog.fn(*args)
@@ -86,114 +97,39 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         gs = state.game_state
         assert gs is not None
 
-        # 1. Process observation — builds MettagridState, updates world model
+        # Apply any LLM-set knobs before action selection.
+        if state.resource_bias_from_llm is not None:
+            gs.resource_bias = state.resource_bias_from_llm
+        if state.llm_objective is not None and hasattr(gs.engine, "_llm_objective"):
+            gs.engine._llm_objective = state.llm_objective
+
         gs.process_obs(obs)
-
-        # 2. Determine role via desired_role program
         gs.role = self._invoke_sync("desired_role", gs)
+        # LLM role override wins over the heuristic role choice (soft hint).
+        if state.llm_role_override is not None:
+            gs.role = state.llm_role_override
 
-        # 3. Invoke main dispatch program (returns (Action, summary))
         action, summary = self._invoke_sync("step", gs)
-
-        # 4. Finalize — record navigation observation, bookkeep
         gs.finalize_step(summary)
 
-        step = gs.step_index
-
-        # 5. Periodic LLM analysis
-        if self._llm_executor is not None and step - state.last_llm_step >= state.llm_interval:
-            state.last_llm_step = step
-            self._llm_analyze(gs, state)
-            self._adapt_interval(state)
+        # Heartbeat: feed the LLM a periodic snapshot.
+        if state.worker is not None and gs.step_index % _HEARTBEAT_EVERY == 0:
+            snapshot = self._invoke_sync("summarize", gs)
+            _log(state.log_queue, {"kind": "heartbeat", **snapshot})
 
         return action, state
 
-    def _llm_analyze(
-        self,
-        gs: GameState,
-        state: CvCAgentState,
-    ) -> None:
-        """Run the analyze LLM program via the program table."""
-        try:
-            summary = self._invoke_sync("summarize", gs)
-            prog = self._programs.get("analyze")
-            if prog is None or prog.executor != "llm":
-                return
 
-            prompt = prog.system(summary) if callable(prog.system) else str(prog.system)
-            cfg = prog.config
-
-            t0 = time.perf_counter()
-            response = self._llm_executor.client.messages.create(
-                model=cfg.get("model", "claude-sonnet-4-20250514"),
-                max_tokens=cfg.get("max_tokens", 150),
-                temperature=cfg.get("temperature", 0.2),
-                messages=[{"role": "user", "content": prompt}],
-            )
-            latency_ms = (time.perf_counter() - t0) * 1000
-
-            text = self._llm_executor._extract_text(response)
-            parsed = prog.parser(text) if prog.parser else {"analysis": text}
-
-            if "resource_bias" in parsed:
-                state.resource_bias_from_llm = parsed["resource_bias"]
-                gs.resource_bias = parsed["resource_bias"]
-
-            # Apply role override from LLM
-            if "role" in parsed:
-                gs.role = parsed["role"]
-
-            # Apply objective to engine directive
-            if "objective" in parsed and hasattr(gs.engine, "_llm_objective"):
-                gs.engine._llm_objective = parsed["objective"]
-
-            state.llm_latencies.append(latency_ms)
-            state.llm_log.append(
-                {
-                    "step": gs.step_index,
-                    "agent": self._agent_id,
-                    "latency_ms": round(latency_ms),
-                    "prompt": prompt,
-                    "raw_response": text,
-                    "analysis": parsed.get("analysis", ""),
-                    "resource_bias": state.resource_bias_from_llm,
-                    "role_override": parsed.get("role"),
-                    "objective": parsed.get("objective"),
-                }
-            )
-            print(
-                f"[table] a{self._agent_id} step={gs.step_index} "
-                f"llm={latency_ms:.0f}ms interval={state.llm_interval}: "
-                f"{parsed.get('analysis', '')[:100]}",
-                flush=True,
-            )
-        except Exception as e:
-            state.llm_log.append(
-                {
-                    "step": gs.step_index,
-                    "agent": self._agent_id,
-                    "error": str(e),
-                }
-            )
-
-    def _adapt_interval(self, state: CvCAgentState) -> None:
-        """Adjust LLM call frequency based on latency."""
-        if not state.llm_latencies:
-            return
-        recent = state.llm_latencies[-5:]
-        avg_ms = sum(recent) / len(recent)
-        if avg_ms < 2000:
-            state.llm_interval = max(200, state.llm_interval - 50)
-        elif avg_ms > 5000:
-            state.llm_interval = min(1000, state.llm_interval + 100)
+def _log(q: queue.Queue, event: dict) -> None:
+    """Best-effort enqueue. Drops the event if the queue is full."""
+    try:
+        q.put_nowait(event)
+    except queue.Full:
+        pass
 
 
 class CvCPolicy(MultiAgentPolicy):
-    """Top-level CvC policy backed by a mutable program table.
-
-    Dispatches through the program table instead of hard-coded
-    CvcEngine._choose_action.
-    """
+    """Top-level CvC policy. Spawns one LLMWorker thread per agent."""
 
     short_names = ["cvc", "cvc-policy"]
     minimum_action_timeout_ms = 30_000
@@ -208,25 +144,23 @@ class CvCPolicy(MultiAgentPolicy):
         super().__init__(policy_env_info, device=device, **kwargs)
         self._programs = programs or all_programs()
         self._agent_policies: dict[int, StatefulAgentPolicy[CvCAgentState]] = {}
-        self._llm_executor: LLMExecutor | None = None
+        self._llm_client: Any | None = None
         self._episode_start = time.time()
         self._game_id = kwargs.get("game_id", f"game_{int(time.time())}")
         self._init_llm()
 
         import atexit
 
-        atexit.register(self._write_trace)
+        atexit.register(self._on_episode_end)
 
     def _init_llm(self) -> None:
-        if LLMExecutor is None:
-            return
         api_key = os.environ.get("COGORA_ANTHROPIC_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             return
         try:
             import anthropic
 
-            self._llm_executor = LLMExecutor(anthropic.Anthropic(api_key=api_key))
+            self._llm_client = anthropic.Anthropic(api_key=api_key)
         except ImportError:
             pass
 
@@ -240,7 +174,7 @@ class CvCPolicy(MultiAgentPolicy):
                 self._policy_env_info,
                 agent_id,
                 programs=self._programs,
-                llm_executor=self._llm_executor,
+                llm_client=self._llm_client,
                 game_id=self._game_id,
             )
             self._agent_policies[agent_id] = StatefulAgentPolicy(
@@ -252,10 +186,21 @@ class CvCPolicy(MultiAgentPolicy):
 
     def reset(self) -> None:
         if self._agent_policies:
-            self._write_trace()
+            self._on_episode_end()
         self._episode_start = time.time()
         for p in self._agent_policies.values():
             p.reset()
+
+    def _stop_workers(self) -> None:
+        for wrapper in self._agent_policies.values():
+            st: CvCAgentState | None = getattr(wrapper, "_state", None)
+            if st is not None and st.worker is not None:
+                st.worker.stop(timeout=2.0)
+                st.worker = None
+
+    def _on_episode_end(self) -> None:
+        self._stop_workers()
+        self._write_trace()
 
     def _write_trace(self) -> None:
         """Write LLM↔Python communication trace to disk for analysis."""
@@ -273,14 +218,17 @@ class CvCPolicy(MultiAgentPolicy):
                 "steps": gs.step_index if gs else 0,
                 "llm_calls": len(st.llm_log),
                 "final_resource_bias": st.resource_bias_from_llm,
+                "final_role_override": st.llm_role_override,
+                "final_objective": st.llm_objective,
             }
-            all_llm.extend(st.llm_log)
+            for entry in st.llm_log:
+                all_llm.append({"agent": aid, **entry})
 
         trace = {
             "game_id": self._game_id,
             "duration_s": round(time.time() - self._episode_start, 1),
             "agents": agents_data,
-            "llm_trace": sorted(all_llm, key=lambda x: (x.get("step", 0), x.get("agent", 0))),
+            "llm_trace": all_llm,
         }
 
         path = trace_dir / f"{self._game_id}.json"
