@@ -12,11 +12,13 @@ from typing import Any
 from cvc_policy.agent import (
     KnownEntity,
     absolute_position,
+    gear_signature,
     has_role_gear,
     inventory_signature,
     is_usable_recent_extractor,
     needs_emergency_mining,
     resource_priority,
+    resource_total,
     team_can_afford_gear,
     team_id,
 )
@@ -107,6 +109,15 @@ class GameState:
             engine._default_resource_bias if directive.resource_bias is None else directive.resource_bias
         )
 
+        # Cargo-cap discovery: at this point `state` reflects the outcome of
+        # last tick's action. If that action was a mine attempt, compare cargo
+        # to the snapshot taken at end of last tick.
+        engine._cargo_cap.observe(
+            gear_sig=gear_signature(state),
+            cargo=resource_total(state),
+            mined_last_tick=engine._prev_summary_was_mine,
+        )
+
         # Store for bookkeeping at end of step
         self.mg_state = state
         return state
@@ -122,6 +133,7 @@ class GameState:
         engine._previous_state = state
         engine._last_global_pos = current_pos
         engine._last_inventory_signature = inventory_signature(state)
+        engine._prev_summary_was_mine = summary.startswith("mine_") or "_mine_" in summary
 
     # ── Properties delegating to engine/state ─────────────────────────
 

@@ -9,6 +9,7 @@ from cvc_policy.agent import (
     KnownEntity,
     absolute_position,
     deposit_threshold,
+    gear_signature,
     has_role_gear,
     heart_supply_capacity,
     manhattan,
@@ -19,6 +20,7 @@ from cvc_policy.agent import (
     team_id,
     team_min_resource,
 )
+from cvc_policy.agent.cargo_cap import CargoCapTracker
 from cvc_policy.agent.budgets import (
     PressureMetrics,
     assign_role,
@@ -37,6 +39,7 @@ class PressureMixin:
     _agent_id: int
     _role_id: int
     _step_index: int
+    _cargo_cap: CargoCapTracker
 
     def _desired_role(self, state: MettagridState, *, objective: str | None = None) -> str:
         aligner_budget, scrambler_budget = self._pressure_budgets(state, objective=objective)
@@ -151,7 +154,8 @@ class PressureMixin:
         cargo = resource_total(state)
         if cargo <= 0:
             return False
-        if cargo >= deposit_threshold(state):
+        known = self._cargo_cap.known_cap(gear_signature(state))
+        if cargo >= deposit_threshold(state, known_cap=known):
             return True
 
         safe_target = self._nearest_friendly_depot(state)  # type: ignore[attr-defined]

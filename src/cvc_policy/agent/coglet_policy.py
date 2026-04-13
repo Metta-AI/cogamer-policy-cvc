@@ -9,6 +9,7 @@ Extends CvcEngine with:
 from __future__ import annotations
 
 from cvc_policy.agent import KnownEntity, absolute_position, manhattan
+from cvc_policy.agent.cargo_cap import CargoCapTracker
 from cvc_policy.agent.main import CvcEngine
 from mettagrid.sdk.agent import MacroDirective, MettagridState
 
@@ -40,6 +41,9 @@ class CogletAgentPolicy(CvcEngine):
         super().__init__(*args, **kwargs)
         # Set by CogletPolicyImpl when LLM provides guidance
         self._llm_resource_bias: str | None = None
+        # Discovered cargo caps, indexed by gear signature.
+        self._cargo_cap = CargoCapTracker()
+        self._prev_summary_was_mine: bool = False
 
     def _macro_directive(self, state: MettagridState) -> MacroDirective:
         # LLM override takes priority

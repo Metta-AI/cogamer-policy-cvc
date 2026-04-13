@@ -32,6 +32,9 @@ def attr_str(entity: SemanticEntity, name: str) -> str | None:
     return str(value)
 
 
+_GEAR_ITEMS = ("miner", "aligner", "scrambler", "scout")
+
+
 def has_role_gear(state: MettagridState, role: str) -> bool:
     return int(state.self_state.inventory.get(role, 0)) > 0
 
@@ -40,10 +43,22 @@ def resource_total(state: MettagridState) -> int:
     return sum(int(state.self_state.inventory.get(resource, 0)) for resource in _ELEMENTS)
 
 
-def deposit_threshold(state: MettagridState) -> int:
-    # Cargo cap is 4 without gear, 44 with miner gear (base 4 + modifier 40).
-    # Extract amount is 10 per hit with miner gear. Set threshold to the cap
-    # so the miner fills up before heading to deposit.
+def gear_signature(state: MettagridState) -> tuple[str, ...]:
+    """Sorted tuple of gear items currently held. Keys the cargo-cap tracker."""
+    return tuple(g for g in _GEAR_ITEMS if int(state.self_state.inventory.get(g, 0)) > 0)
+
+
+def deposit_threshold(state: MettagridState, known_cap: int | None = None) -> int:
+    """Return the cargo level at which the miner should head to deposit.
+
+    `known_cap` is the cap observed at runtime for the current gear signature.
+    When present it is authoritative. Otherwise fall back to the static
+    heuristic (4 ungeared, 40 with miner gear) so pre-discovery behavior is
+    still reasonable — the miner keeps tapping the extractor on its first
+    trip until the cap is learned, then sticks to exactly that amount.
+    """
+    if known_cap is not None:
+        return known_cap
     if has_role_gear(state, "miner"):
         return 40
     return 4
