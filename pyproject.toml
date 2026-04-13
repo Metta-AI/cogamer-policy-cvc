@@ -22,3 +22,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.uv.sources]
+cogames = {git = "https://github.com/Metta-AI/cogames.git"}
+mettagrid = {git = "https://github.com/Metta-AI/mettagrid.git"}

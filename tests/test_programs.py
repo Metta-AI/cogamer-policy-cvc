@@ -291,3 +291,40 @@ class TestParseAnalysis:
     def test_returns_dict(self):
         result = _parse_analysis("anything")
         assert isinstance(result, dict)
+
+    def test_fenced_json(self):
+        """JSON wrapped in ```json ... ``` fences is extracted."""
+        text = '```json\n{"resource_bias": "germanium", "role": null, "objective": "expand", "analysis": "Need more junctions."}\n```'
+        result = _parse_analysis(text)
+        assert result["resource_bias"] == "germanium"
+        assert result["objective"] == "expand"
+        assert "role" not in result
+
+    def test_fenced_json_with_leading_text(self):
+        """Text before fenced JSON block is ignored."""
+        text = 'Looking at the game state:\n\n- Resources are low\n\n```json\n{"resource_bias": "silicon", "role": "miner", "objective": "economy_bootstrap", "analysis": "Need miners."}\n```'
+        result = _parse_analysis(text)
+        assert result["resource_bias"] == "silicon"
+        assert result["role"] == "miner"
+        assert result["objective"] == "economy_bootstrap"
+
+    def test_fenced_json_pretty_printed(self):
+        """Pretty-printed JSON inside fences is extracted."""
+        text = '```json\n{\n  "resource_bias": "oxygen",\n  "role": null,\n  "objective": "defend",\n  "analysis": "Hold junctions."\n}\n```'
+        result = _parse_analysis(text)
+        assert result["resource_bias"] == "oxygen"
+        assert result["objective"] == "defend"
+
+    def test_json_embedded_in_text(self):
+        """JSON object embedded in prose (no fences) is extracted."""
+        text = 'The best strategy is: {"resource_bias": "carbon", "role": "aligner", "objective": "expand", "analysis": "Go expand."} based on the data.'
+        result = _parse_analysis(text)
+        assert result["resource_bias"] == "carbon"
+        assert result["role"] == "aligner"
+
+    def test_truncated_fenced_json(self):
+        """Truncated response with incomplete JSON fails gracefully."""
+        text = '```json\n{"resource_bias": "silicon", "role": null, "objective": "defend", "analysis": "Junction dominance requires'
+        result = _parse_analysis(text)
+        assert isinstance(result, dict)
+        assert "resource_bias" not in result

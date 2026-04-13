@@ -269,7 +269,28 @@ def _parse_analysis(text: str) -> dict:
     """Parse the LLM response text into a directive dict."""
     result: dict[str, Any] = {"analysis": text[:100]}
     try:
-        directive = json.loads(text)
+        # Extract JSON from markdown fences or raw text
+        json_str = text
+        if "```" in text:
+            # Find content between ```json ... ``` or ``` ... ```
+            import re
+            m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+            if m:
+                json_str = m.group(1)
+        elif "{" in text:
+            # Extract first JSON object from surrounding text
+            start = text.index("{")
+            depth, end = 0, start
+            for i, c in enumerate(text[start:], start):
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            json_str = text[start:end]
+        directive = json.loads(json_str)
         if isinstance(directive, dict):
             if directive.get("resource_bias") in _ELEMENTS:
                 result["resource_bias"] = directive["resource_bias"]
