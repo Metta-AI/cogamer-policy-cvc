@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from cvc_policy.agent.scoring import is_usable_recent_extractor
 from cvc_policy.agent.world_model import WorldModel
 
 
@@ -321,3 +322,64 @@ def test_forget_nearest_removes_only_closest(wm, make_state, make_semantic_entit
     remaining = wm.entities(entity_type="junction")
     assert len(remaining) == 1
     assert remaining[0].position == (10, 10)
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: miner target selection filters out empty extractors.
+# Exercises the same (WorldModel.entities + is_usable_recent_extractor)
+# query path used by _preferred_miner_extractor and _sticky_miner_target.
+# ---------------------------------------------------------------------------
+
+
+def test_query_skips_empty_extractors(wm, make_state, make_semantic_entity):
+    """Given one empty and one full carbon_extractor, the miner query returns only the full one."""
+    empty = make_semantic_entity("carbon_extractor", 5, 5, carbon=0)
+    full = make_semantic_entity("carbon_extractor", 20, 20, carbon=150)
+    state = make_state(visible_entities=[empty, full], step=10)
+    wm.update(state)
+
+    usable = wm.entities(
+        entity_type="carbon_extractor",
+        predicate=lambda e: is_usable_recent_extractor(e, step=10),
+    )
+    assert len(usable) == 1
+    assert usable[0].position == (20, 20)
+
+
+def test_query_returns_nothing_when_all_extractors_empty(wm, make_state, make_semantic_entity):
+    """If every known extractor of this resource is drained, nothing is returned."""
+    entities = [
+        make_semantic_entity("oxygen_extractor", 1, 1, oxygen=0),
+        make_semantic_entity("oxygen_extractor", 2, 2, oxygen=0),
+        make_semantic_entity("oxygen_extractor", 3, 3, oxygen=0),
+    ]
+    state = make_state(visible_entities=entities, step=5)
+    wm.update(state)
+
+    usable = wm.entities(
+        entity_type="oxygen_extractor",
+        predicate=lambda e: is_usable_recent_extractor(e, step=5),
+    )
+    assert usable == []
+
+
+def test_query_re_admits_extractor_once_refilled(wm, make_state, make_semantic_entity):
+    """World model update with a fresh observation replaces the cached amount."""
+    drained = make_semantic_entity("germanium_extractor", 7, 7, germanium=0)
+    wm.update(make_state(visible_entities=[drained], step=10))
+    assert (
+        wm.entities(
+            entity_type="germanium_extractor",
+            predicate=lambda e: is_usable_recent_extractor(e, step=10),
+        )
+        == []
+    )
+
+    refilled = make_semantic_entity("germanium_extractor", 7, 7, germanium=200)
+    wm.update(make_state(visible_entities=[refilled], step=20))
+    usable = wm.entities(
+        entity_type="germanium_extractor",
+        predicate=lambda e: is_usable_recent_extractor(e, step=20),
+    )
+    assert len(usable) == 1
+    assert usable[0].position == (7, 7)

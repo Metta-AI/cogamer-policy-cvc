@@ -16,7 +16,6 @@ from cvc_policy.agent.resources import (
     absolute_position,
     attr_int,
     attr_str,
-    deposit_threshold,
     gear_signature,
     has_role_gear,
     heart_batch_target,

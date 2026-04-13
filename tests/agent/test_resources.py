@@ -8,7 +8,6 @@ from cvc_policy.agent.resources import (
     absolute_position,
     attr_int,
     attr_str,
-    deposit_threshold,
     has_role_gear,
     heart_batch_target,
     heart_supply_capacity,
@@ -120,18 +119,6 @@ def test_has_role_gear_requires_positive_matching_inventory(
 )
 def test_resource_total_counts_only_elements(make_state, inventory: dict[str, int], expected: int) -> None:
     assert resource_total(make_state(inventory=inventory)) == expected
-
-
-@pytest.mark.parametrize(
-    ("inventory", "expected"),
-    [
-        ({}, 4),
-        ({"miner": 1}, 40),
-        ({"aligner": 1}, 4),
-    ],
-)
-def test_deposit_threshold_depends_on_miner_gear(make_state, inventory: dict[str, int], expected: int) -> None:
-    assert deposit_threshold(make_state(inventory=inventory)) == expected
 
 
 @pytest.mark.parametrize(
@@ -275,8 +262,9 @@ def test_retreat_threshold_cases(
         ({"inventory": {"miner": 1, "heart": 0, "carbon": 0}}, "miner", "economy"),
         ({"inventory": {"aligner": 1, "heart": 1}}, "aligner", "expand"),
         ({"inventory": {"scrambler": 1, "heart": 1}}, "scrambler", "pressure"),
-        ({"inventory": {"miner": 1, "carbon": 10, "oxygen": 10, "germanium": 10, "silicon": 10}}, "miner", "deposit"),
-        ({"inventory": {"miner": 1, "carbon": 10, "oxygen": 10, "germanium": 10, "silicon": 9}}, "miner", "economy"),
+        # Miner is always "economy" while mining — the deposit decision lives
+        # in _should_deposit_resources (pressure.py), not in phase_name.
+        ({"inventory": {"miner": 1, "carbon": 10, "oxygen": 10, "germanium": 10, "silicon": 10}}, "miner", "economy"),
         ({"inventory": {"scout": 1}}, "scout", "explore"),
     ],
 )

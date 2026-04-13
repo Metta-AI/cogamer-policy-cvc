@@ -8,7 +8,6 @@ from cvc_policy.agent import (
     _JUNCTION_AOE_RANGE,
     KnownEntity,
     absolute_position,
-    deposit_threshold,
     gear_signature,
     has_role_gear,
     heart_supply_capacity,
@@ -155,7 +154,7 @@ class PressureMixin:
         if cargo <= 0:
             return False
         known = self._cargo_cap.known_cap(gear_signature(state))
-        if cargo >= deposit_threshold(state, known_cap=known):
+        if known is not None and cargo >= known:
             return True
 
         safe_target = self._nearest_friendly_depot(state)  # type: ignore[attr-defined]

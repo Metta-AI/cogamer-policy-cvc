@@ -48,20 +48,6 @@ def gear_signature(state: MettagridState) -> tuple[str, ...]:
     return tuple(g for g in _GEAR_ITEMS if int(state.self_state.inventory.get(g, 0)) > 0)
 
 
-def deposit_threshold(state: MettagridState, known_cap: int | None = None) -> int:
-    """Return the cargo level at which the miner should head to deposit.
-
-    `known_cap` is the cap observed at runtime for the current gear signature.
-    When present it is authoritative. Otherwise fall back to the static
-    heuristic (4 ungeared, 40 with miner gear) so pre-discovery behavior is
-    still reasonable — the miner keeps tapping the extractor on its first
-    trip until the cap is learned, then sticks to exactly that amount.
-    """
-    if known_cap is not None:
-        return known_cap
-    if has_role_gear(state, "miner"):
-        return 40
-    return 4
 
 
 def team_id(state: MettagridState) -> str:
@@ -127,8 +113,6 @@ def phase_name(state: MettagridState, role: str) -> str:
         return "regear"
     if role in {"aligner", "scrambler"} and int(state.self_state.inventory.get("heart", 0)) <= 0:
         return "hearts"
-    if role == "miner" and resource_total(state) >= deposit_threshold(state):
-        return "deposit"
     if role == "miner":
         return "economy"
     if role == "aligner":
