@@ -576,9 +576,16 @@ class TestIsUsableRecentExtractor:
         )
         assert is_usable_recent_extractor(entity, step=500) is True
 
-    def test_extractor_missing_amount_is_usable(self, make_entity):
-        """Backward compatibility: entities without an amount attribute pass the amount check."""
+    def test_extractor_missing_resource_attribute_is_empty(self, make_entity):
+        """A drained extractor has its resource key *removed* from attributes
+        (not set to 0). Missing resource key therefore means empty, not unknown."""
         entity = make_entity(entity_type="carbon_extractor", last_seen_step=500)
+        assert is_usable_recent_extractor(entity, step=500) is False
+
+    def test_non_resource_extractor_passes_amount_check(self, make_entity):
+        """An extractor kind that doesn't encode a resource in its type (rare)
+        falls through the amount check since there's nothing to look up."""
+        entity = make_entity(entity_type="extractor", last_seen_step=500)
         assert is_usable_recent_extractor(entity, step=500) is True
 
     def test_empty_overrides_recent(self, make_entity):

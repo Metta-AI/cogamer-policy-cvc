@@ -346,6 +346,22 @@ def test_query_skips_empty_extractors(wm, make_state, make_semantic_entity):
     assert usable[0].position == (20, 20)
 
 
+def test_query_skips_drained_extractor_with_key_removed(wm, make_state, make_semantic_entity):
+    """Real drained extractors drop their resource key entirely (verified against live game).
+    The predicate must treat a missing resource attribute as empty, not unknown."""
+    # No `carbon=` kwarg → no carbon key in attributes — mirrors the live observation.
+    drained = make_semantic_entity("carbon_extractor", 5, 5)
+    full = make_semantic_entity("carbon_extractor", 20, 20, carbon=150)
+    state = make_state(visible_entities=[drained, full], step=10)
+    wm.update(state)
+
+    usable = wm.entities(
+        entity_type="carbon_extractor",
+        predicate=lambda e: is_usable_recent_extractor(e, step=10),
+    )
+    assert [e.position for e in usable] == [(20, 20)]
+
+
 def test_query_returns_nothing_when_all_extractors_empty(wm, make_state, make_semantic_entity):
     """If every known extractor of this resource is drained, nothing is returned."""
     entities = [
