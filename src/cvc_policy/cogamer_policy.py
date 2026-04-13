@@ -25,6 +25,7 @@ from typing import Any
 
 from cvc_policy.game_state import GameState
 from cvc_policy.llm_worker import LLMWorker
+from cvc_policy.logcfg import LogConfig
 from cvc_policy.programs import all_programs
 from mettagrid.policy.policy import MultiAgentPolicy, StatefulAgentPolicy, StatefulPolicyImpl
 from mettagrid.policy.policy_env_interface import PolicyEnvInterface
@@ -67,12 +68,14 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         programs: dict[str, Program],
         llm_client: Any | None = None,
         game_id: str = "",
+        log: LogConfig | None = None,
     ) -> None:
         self._policy_env_info = policy_env_info
         self._agent_id = agent_id
         self._programs = programs
         self._llm_client = llm_client
         self._game_id = game_id
+        self._log = log if log is not None else LogConfig("")
 
     def initial_agent_state(self) -> CvCAgentState:
         gs = GameState(
@@ -83,7 +86,7 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         # Wire log_to_llm onto GameState so code programs can push events.
         gs.log_to_llm = lambda event: _log(state.log_queue, event)  # type: ignore[attr-defined]
         if self._llm_client is not None:
-            state.worker = LLMWorker(self._llm_client, self._agent_id, state)
+            state.worker = LLMWorker(self._llm_client, self._agent_id, state, log=self._log)
             state.worker.start()
         return state
 
@@ -104,13 +107,24 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             gs.engine._llm_objective = state.llm_objective
 
         gs.process_obs(obs)
+        prev_role = gs.role
         gs.role = self._invoke_sync("desired_role", gs)
         # LLM role override wins over the heuristic role choice (soft hint).
         if state.llm_role_override is not None:
             gs.role = state.llm_role_override
+        if self._log.enabled("py") and gs.role != prev_role:
+            self._log.log(
+                "py",
+                f"a{self._agent_id} step={gs.step_index} role {prev_role}->{gs.role}",
+            )
 
         action, summary = self._invoke_sync("step", gs)
         gs.finalize_step(summary)
+        if self._log.enabled("py"):
+            self._log.log(
+                "py",
+                f"a{self._agent_id} step={gs.step_index} role={gs.role} {summary}",
+            )
 
         # Heartbeat: feed the LLM a periodic snapshot.
         if state.worker is not None and gs.step_index % _HEARTBEAT_EVERY == 0:
@@ -139,6 +153,7 @@ class CvCPolicy(MultiAgentPolicy):
         policy_env_info: PolicyEnvInterface,
         device: str = "cpu",
         programs: dict[str, Program] | None = None,
+        log: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(policy_env_info, device=device, **kwargs)
@@ -147,6 +162,9 @@ class CvCPolicy(MultiAgentPolicy):
         self._llm_client: Any | None = None
         self._episode_start = time.time()
         self._game_id = kwargs.get("game_id", f"game_{int(time.time())}")
+        self._log = LogConfig(log)
+        if self._log.enabled("py") or self._log.enabled("llm"):
+            self._log.log("py", f"policy init streams={self._log!r}")
         self._init_llm()
 
         import atexit
@@ -176,6 +194,7 @@ class CvCPolicy(MultiAgentPolicy):
                 programs=self._programs,
                 llm_client=self._llm_client,
                 game_id=self._game_id,
+                log=self._log,
             )
             self._agent_policies[agent_id] = StatefulAgentPolicy(
                 impl,
