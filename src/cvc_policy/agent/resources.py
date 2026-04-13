@@ -41,8 +41,11 @@ def resource_total(state: MettagridState) -> int:
 
 
 def deposit_threshold(state: MettagridState) -> int:
+    # Cargo cap is 4 without gear, 44 with miner gear (base 4 + modifier 40).
+    # Extract amount is 10 per hit with miner gear. Set threshold to the cap
+    # so the miner fills up before heading to deposit.
     if has_role_gear(state, "miner"):
-        return 12
+        return 40
     return 4
 
 

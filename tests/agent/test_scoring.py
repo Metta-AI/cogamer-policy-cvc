@@ -558,6 +558,38 @@ class TestIsUsableRecentExtractor:
         entity = make_entity(entity_type="extractor", last_seen_step=600)
         assert is_usable_recent_extractor(entity, step=500) is True
 
+    def test_empty_extractor_is_skipped(self, make_entity):
+        """A depleted extractor (resource attribute == 0) is not usable, even if recent."""
+        entity = make_entity(
+            entity_type="carbon_extractor",
+            last_seen_step=500,
+            attributes={"carbon": 0},
+        )
+        assert is_usable_recent_extractor(entity, step=500) is False
+
+    def test_nonempty_extractor_is_usable(self, make_entity):
+        """A resource extractor with positive inventory is usable."""
+        entity = make_entity(
+            entity_type="oxygen_extractor",
+            last_seen_step=500,
+            attributes={"oxygen": 42},
+        )
+        assert is_usable_recent_extractor(entity, step=500) is True
+
+    def test_extractor_missing_amount_is_usable(self, make_entity):
+        """Backward compatibility: entities without an amount attribute pass the amount check."""
+        entity = make_entity(entity_type="carbon_extractor", last_seen_step=500)
+        assert is_usable_recent_extractor(entity, step=500) is True
+
+    def test_empty_overrides_recent(self, make_entity):
+        """Even a freshly-seen extractor is skipped if it reports zero inventory."""
+        entity = make_entity(
+            entity_type="germanium_extractor",
+            last_seen_step=500,
+            attributes={"germanium": 0},
+        )
+        assert is_usable_recent_extractor(entity, step=500 + _EXTRACTOR_MEMORY_STEPS // 2) is False
+
 
 # ---------------------------------------------------------------------------
 # scramble_target_score

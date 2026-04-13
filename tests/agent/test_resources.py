@@ -126,7 +126,7 @@ def test_resource_total_counts_only_elements(make_state, inventory: dict[str, in
     ("inventory", "expected"),
     [
         ({}, 4),
-        ({"miner": 1}, 12),
+        ({"miner": 1}, 40),
         ({"aligner": 1}, 4),
     ],
 )
@@ -275,8 +275,8 @@ def test_retreat_threshold_cases(
         ({"inventory": {"miner": 1, "heart": 0, "carbon": 0}}, "miner", "economy"),
         ({"inventory": {"aligner": 1, "heart": 1}}, "aligner", "expand"),
         ({"inventory": {"scrambler": 1, "heart": 1}}, "scrambler", "pressure"),
-        ({"inventory": {"miner": 1, "carbon": 3, "oxygen": 3, "germanium": 3, "silicon": 3}}, "miner", "deposit"),
-        ({"inventory": {"miner": 1, "carbon": 3, "oxygen": 3, "germanium": 3, "silicon": 2}}, "miner", "economy"),
+        ({"inventory": {"miner": 1, "carbon": 10, "oxygen": 10, "germanium": 10, "silicon": 10}}, "miner", "deposit"),
+        ({"inventory": {"miner": 1, "carbon": 10, "oxygen": 10, "germanium": 10, "silicon": 9}}, "miner", "economy"),
         ({"inventory": {"scout": 1}}, "scout", "explore"),
     ],
 )

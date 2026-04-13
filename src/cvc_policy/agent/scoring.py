@@ -124,7 +124,19 @@ def is_claimed_by_other(
 
 
 def is_usable_recent_extractor(entity: KnownEntity, *, step: int) -> bool:
-    return step - entity.last_seen_step <= _EXTRACTOR_MEMORY_STEPS
+    if step - entity.last_seen_step > _EXTRACTOR_MEMORY_STEPS:
+        return False
+    # Extractors surface their remaining inventory under the resource name
+    # (e.g., "carbon_extractor" → attributes["carbon"]). An amount of 0 means
+    # the extractor has been drained; skip it. Missing attribute = unknown,
+    # assume usable (backward compat with entities that don't report amount).
+    resource = entity.entity_type.removesuffix("_extractor")
+    if resource == entity.entity_type:
+        return True
+    amount = entity.attributes.get(resource)
+    if amount is None:
+        return True
+    return int(amount) > 0
 
 
 def scramble_target_score(
