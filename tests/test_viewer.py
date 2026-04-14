@@ -141,14 +141,33 @@ def test_report_tick_has_data_attrs(tmp_path: Path) -> None:
     assert 'data-type="target"' in html
 
 
-def test_report_replay_card_mentions_replay_file(tmp_path: Path) -> None:
+def test_report_replay_card_present_when_replay_file_exists(
+    tmp_path: Path,
+) -> None:
     from cvc_policy.viewer import render
 
     run_dir = _write_fake_run(tmp_path / "my-run")
     (run_dir / "replay.json.z").write_bytes(b"fake")
     html = render(run_dir).read_text()
-    assert "replay.json.z" in html
-    assert "softmax cogames replay" in html
+    # Replay card present and references replay resource somehow.
+    assert "replay-card" in html
+
+
+def test_render_includes_mettascope_iframe(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "my-run")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+    assert '<iframe id="mettascope"' in html
+    # JS builds the mettascope URL at runtime.
+    assert (
+        "https://metta-ai.github.io/metta/mettascope/mettascope.html?replay="
+        in html
+    )
+    assert "./replay.json.z" in html
+
+
 
 
 def test_render_neutralizes_script_end_in_json_island(tmp_path: Path) -> None:
@@ -210,20 +229,6 @@ def test_render_escapes_assertion_message(tmp_path: Path) -> None:
     assert "&lt;script&gt;alert(" in html
 
 
-def test_report_replay_kbd_is_absolute_path(tmp_path: Path) -> None:
-    from cvc_policy.viewer import render
-
-    run_dir = _write_fake_run(tmp_path / "my-run")
-    (run_dir / "replay.json.z").write_bytes(b"fake")
-    html = render(run_dir).read_text()
-    m = re.search(r'<kbd id="replay-cmd">([^<]+)</kbd>', html)
-    assert m is not None
-    text = m.group(1)
-    assert text.startswith("softmax cogames replay ")
-    path_part = text[len("softmax cogames replay "):].strip()
-    assert Path(path_part).is_absolute()
-    assert Path(path_part).exists()
-    assert "replay.json.z" in path_part
 
 
 def test_cgp_view_rejects_path_traversal(tmp_path: Path) -> None:

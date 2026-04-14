@@ -310,7 +310,7 @@ def test_view_direct_path(tmp_path) -> None:
     (run_dir / "events.json").write_text("[]")
     (run_dir / "result.json").write_text('{"status": "passed", "assertions": []}')
     result = CliRunner().invoke(
-        app, ["view", str(run_dir), "--no-open"]
+        app, ["view", str(run_dir), "--no-open", "--no-server"]
     )
     assert result.exit_code == 0
     assert "wrote" in result.output

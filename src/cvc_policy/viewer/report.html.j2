@@ -54,13 +54,9 @@ svg.timeline { width: 100%; height: 18px; background: var(--panel2);
   border-radius: 3px; }
 svg.timeline rect.tick { cursor: pointer; }
 svg.timeline line.cursor { stroke: var(--accent); stroke-width: 1; }
-.replay-card kbd { display: block; background: var(--panel2);
-  padding: 6px 8px; border-radius: 4px; color: var(--fg);
-  border: 1px solid var(--border); white-space: pre-wrap;
-  word-break: break-all; margin-top: 6px; }
-.replay-card button { margin-top: 6px; background: var(--accent);
-  color: #04231a; border: 0; padding: 4px 10px; border-radius: 4px;
-  cursor: pointer; font-family: inherit; font-weight: 600; }
+.replay-card iframe { width: 100%; min-height: 480px; border: 0;
+  background: var(--panel2); border-radius: 4px; }
+.replay-fallback { padding: 1em; color: var(--muted); font-size: 0.9em; }
 .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .tabs button { background: var(--panel2); color: var(--fg); border: 0;
   padding: 4px 10px; border-radius: 4px 4px 0 0; cursor: pointer;
@@ -146,12 +142,9 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   <section class="replay-card">
     <h2>Replay</h2>
-    <div>game: <span class="meta">{{ mission }}</span></div>
-    <div>variants: <span class="meta">{{ variants|join(', ') or '(none)' }}</span></div>
-    <div>steps: <span class="meta">{{ steps }}</span></div>
     {% if has_replay %}
-    <button type="button" id="copy-replay">Copy replay command</button>
-    <kbd id="replay-cmd">softmax cogames replay {{ replay_rel }}</kbd>
+    <iframe id="mettascope" allowfullscreen></iframe>
+    <noscript>JavaScript required for embedded replay.</noscript>
     {% else %}
     <div class="meta">(no replay.json.z found)</div>
     {% endif %}
@@ -307,13 +300,18 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     b.addEventListener('click', function () { setStep(+b.dataset.step); });
   });
 
-  var copyBtn = document.getElementById('copy-replay');
-  if (copyBtn) {
-    copyBtn.addEventListener('click', function () {
-      var cmd = document.getElementById('replay-cmd').textContent;
-      if (navigator.clipboard) navigator.clipboard.writeText(cmd);
-    });
-  }
+  (function setupReplay() {
+    var iframe = document.getElementById('mettascope');
+    if (!iframe) return;
+    var proto = window.location.protocol;
+    if (proto === 'http:' || proto === 'https:') {
+      var replayUrl = new URL('./replay.json.z', window.location.href).href;
+      var base = 'https://metta-ai.github.io/metta/mettascope/mettascope.html?replay=';
+      iframe.src = base + encodeURIComponent(replayUrl);
+    } else {
+      iframe.outerHTML = '<div class="replay-fallback">Open via <code>cgp view</code> for embedded replay (needs HTTP server).</div>';
+    }
+  })();
 
   setStep(0);
 })();
