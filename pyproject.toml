@@ -30,7 +30,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-timeout = 10
+timeout = 3
 addopts = "-m 'not llm and not scenario'"
 markers = [
   "llm: tests that hit the LLM or spawn subprocesses; excluded by default. Run with `pytest -m llm` or `pytest -m ''`.",
