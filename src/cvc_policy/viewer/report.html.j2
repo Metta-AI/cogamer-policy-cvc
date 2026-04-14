@@ -348,12 +348,25 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       // may block it in browsers in that case).
       var localBase = new URL('./mettascope/mettascope.html', window.location.href).href;
       var remoteBase = 'https://metta-ai.github.io/metta/mettascope/mettascope.html';
+      var showError = function () {
+        iframe.outerHTML = '<div class="replay-fallback">Mettascope not available. Set <code>CVC_METTASCOPE_DIST</code> to a local mettascope <code>dist</code> directory, or install mettagrid with <code>dist</code> included.</div>';
+      };
+      var loadRemote = function () {
+        fetch(remoteBase, {method: 'HEAD', mode: 'no-cors'}).then(function (r2) {
+          if (r2.type === 'opaque' || r2.ok) {
+            iframe.src = remoteBase + '?replay=' + encodeURIComponent(replayUrl);
+          } else {
+            showError();
+          }
+        }).catch(showError);
+      };
       fetch('./mettascope/mettascope.html', {method: 'HEAD'}).then(function (r) {
-        var base = r.ok ? localBase : remoteBase;
-        iframe.src = base + '?replay=' + encodeURIComponent(replayUrl);
-      }).catch(function () {
-        iframe.src = remoteBase + '?replay=' + encodeURIComponent(replayUrl);
-      });
+        if (r.ok) {
+          iframe.src = localBase + '?replay=' + encodeURIComponent(replayUrl);
+        } else {
+          loadRemote();
+        }
+      }).catch(loadRemote);
     } else {
       iframe.outerHTML = '<div class="replay-fallback">Open via <code>cgp view</code> for embedded replay (needs HTTP server).</div>';
     }

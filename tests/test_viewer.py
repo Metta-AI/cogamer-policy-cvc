@@ -772,3 +772,119 @@ def test_cgp_runs_lists_most_recent_first(
     assert "scen_a" in result.output
     assert "scen_b" in result.output
     assert "failed" in result.output
+
+
+def test_mettascope_dist_uses_env_var_when_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CVC_METTASCOPE_DIST wins over all other probes when it contains mettascope.html."""
+    from cvc_policy import cli as cli_mod
+
+    dist = tmp_path / "custom-dist"
+    dist.mkdir()
+    (dist / "mettascope.html").write_text("x")
+
+    monkeypatch.setenv("CVC_METTASCOPE_DIST", str(dist))
+    # Force all other probes to fail so we know env var is what matched.
+    monkeypatch.setattr(cli_mod, "_mettascope_home_glob_dists", lambda: [])
+
+    import mettagrid
+
+    monkeypatch.setattr(
+        mettagrid, "__file__", str(tmp_path / "no_such_mg" / "__init__.py")
+    )
+
+    result = cli_mod._mettascope_dist()
+    assert result is not None
+    assert result.resolve() == dist.resolve()
+
+
+def test_mettascope_dist_falls_through_env_var_if_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset CVC_METTASCOPE_DIST means no env-var match; later probes run."""
+    from cvc_policy import cli as cli_mod
+
+    monkeypatch.delenv("CVC_METTASCOPE_DIST", raising=False)
+
+    # Seed the home-glob probe with a valid fake dist — if env var path ran
+    # first and matched nothing, the glob path must still be consulted and win.
+    fake_dist = tmp_path / "home-dist"
+    fake_dist.mkdir()
+    (fake_dist / "mettascope.html").write_text("x")
+    monkeypatch.setattr(
+        cli_mod, "_mettascope_home_glob_dists", lambda: [fake_dist]
+    )
+
+    # Force the site-packages probe to fail.
+    import mettagrid
+
+    monkeypatch.setattr(
+        mettagrid, "__file__", str(tmp_path / "no_such_mg" / "__init__.py")
+    )
+
+    result = cli_mod._mettascope_dist()
+    assert result is not None
+    assert result.resolve() == fake_dist.resolve()
+
+
+def test_mettascope_dist_env_var_invalid_dir_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Env var pointing at a dir without mettascope.html is skipped."""
+    from cvc_policy import cli as cli_mod
+
+    bad = tmp_path / "no-html-here"
+    bad.mkdir()
+    monkeypatch.setenv("CVC_METTASCOPE_DIST", str(bad))
+    monkeypatch.setattr(cli_mod, "_mettascope_home_glob_dists", lambda: [])
+
+    import mettagrid
+
+    monkeypatch.setattr(
+        mettagrid, "__file__", str(tmp_path / "no_such_mg" / "__init__.py")
+    )
+
+    result = cli_mod._mettascope_dist()
+    assert result is None
+
+
+def test_mettascope_home_glob_finds_sibling_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_mettascope_home_glob_dists() returns dirs matched by ~/code/metta*/.../dist."""
+    from cvc_policy import cli as cli_mod
+
+    fake_home_code = tmp_path / "code"
+    dist = (
+        fake_home_code
+        / "metta-test"
+        / "packages"
+        / "mettagrid"
+        / "nim"
+        / "mettascope"
+        / "dist"
+    )
+    dist.mkdir(parents=True)
+    (dist / "mettascope.html").write_text("x")
+
+    # expanduser("~/code/metta*") should resolve under our fake HOME.
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    results = cli_mod._mettascope_home_glob_dists()
+    assert any(p.resolve() == dist.resolve() for p in results), results
+
+
+def test_render_iframe_shows_error_panel_when_both_sources_fail(
+    tmp_path: Path,
+) -> None:
+    """JS falls back to an in-page error panel when github.io HEAD also fails."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "my-run")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+
+    # The JS must have an error-panel branch with actionable copy.
+    assert "Mettascope not available" in html
+    assert "CVC_METTASCOPE_DIST" in html

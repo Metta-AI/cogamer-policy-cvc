@@ -7,6 +7,8 @@ later batches.
 
 from __future__ import annotations
 
+import glob
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -127,12 +129,46 @@ def _replace_seed(scenario_obj, seed: int):
     return dataclasses.replace(scenario_obj, seed=seed)
 
 
-def _mettascope_dist() -> Path | None:
-    """Locate the mettagrid-bundled mettascope dist directory.
+def _mettascope_home_glob_dists() -> list[Path]:
+    """Return sibling metta checkouts' mettascope dist directories.
 
-    Returns None if mettagrid is not importable or if none of the
-    expected dist layouts contain `mettascope.html`.
+    Searches ``~/code/metta*/packages/mettagrid/nim/mettascope/dist`` via
+    glob. Only entries whose directory exists are returned; the caller is
+    responsible for checking that ``mettascope.html`` is inside.
     """
+    pattern = os.path.expanduser(
+        "~/code/metta*/packages/mettagrid/nim/mettascope/dist"
+    )
+    return [Path(p) for p in glob.glob(pattern) if os.path.isdir(p)]
+
+
+def _mettascope_dist() -> Path | None:
+    """Locate a mettascope dist directory for local serving.
+
+    Resolution order:
+
+    1. ``$CVC_METTASCOPE_DIST`` — explicit override; honored when the
+       directory contains ``mettascope.html``.
+    2. Sibling metta checkouts — ``~/code/metta*/packages/mettagrid/nim/
+       mettascope/dist``; first match wins.
+    3. The mettagrid-wheel-bundled dist — ``<mettagrid>/nim/mettascope/dist``.
+    4. A repo-layout fallback — ``packages/mettagrid/nim/mettascope/dist``.
+
+    Returns ``None`` if none of the probes turn up a directory with
+    ``mettascope.html``. The installed mettagrid wheel typically ships
+    the nim source tree but not the built ``dist`` artifacts, so probe
+    1 or 2 is the happy path on dev machines.
+    """
+    env_override = os.environ.get("CVC_METTASCOPE_DIST")
+    if env_override:
+        env_path = Path(env_override).expanduser()
+        if (env_path / "mettascope.html").exists():
+            return env_path
+
+    for candidate in _mettascope_home_glob_dists():
+        if (candidate / "mettascope.html").exists():
+            return candidate
+
     import mettagrid
 
     root = Path(mettagrid.__file__).resolve().parent
