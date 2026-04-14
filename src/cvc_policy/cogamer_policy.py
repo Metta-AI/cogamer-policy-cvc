@@ -251,6 +251,7 @@ class CvCPolicy(MultiAgentPolicy):
         self._recorder = EventRecorder(
             stderr_streams=streams, record_dir=record_dir
         )
+        self._ended = False
         self._init_llm()
 
         import atexit
@@ -293,6 +294,12 @@ class CvCPolicy(MultiAgentPolicy):
         if self._agent_policies:
             self._on_episode_end()
         self._episode_start = time.time()
+        # Re-arm for the next episode: clear idempotency flag and re-register
+        # atexit (we unregistered it at the end of the previous episode).
+        self._ended = False
+        import atexit
+
+        atexit.register(self._on_episode_end)
         for p in self._agent_policies.values():
             p.reset()
 
@@ -304,6 +311,14 @@ class CvCPolicy(MultiAgentPolicy):
                 st.worker = None
 
     def _on_episode_end(self) -> None:
+        if self._ended:
+            return
+        self._ended = True
+        # Only ever fire once per instance per episode: unregister the atexit
+        # hook so a later interpreter shutdown doesn't double-write.
+        import atexit
+
+        atexit.unregister(self._on_episode_end)
         self._stop_workers()
         self._write_trace()
         if self._record_dir:

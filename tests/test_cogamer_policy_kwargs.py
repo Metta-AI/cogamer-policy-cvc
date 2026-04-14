@@ -54,3 +54,16 @@ def test_no_record_dir_no_events_json(tmp_path):
     p._recorder.emit(type="note", agent=None, stream="py", payload={})
     p._on_episode_end()
     assert not (tmp_path / "events.json").exists()
+
+
+def test_episode_end_is_idempotent(tmp_path):
+    import json
+
+    p = CvCPolicy(_fake_policy_env_info(), record_dir=str(tmp_path))
+    p._recorder.emit(type="note", agent=None, stream="py", payload={"text": "a"})
+    p._on_episode_end()
+    p._on_episode_end()  # second call must be a no-op
+    events = json.loads((tmp_path / "events.json").read_text())
+    assert len(events) == 1
+
+
