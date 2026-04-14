@@ -255,6 +255,135 @@ def test_render_escapes_assertion_message(tmp_path: Path) -> None:
 
 
 
+def test_report_has_filter_bar_section(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=3)
+    html = render(run_dir).read_text()
+    # A dedicated filter bar section exists below the header.
+    assert '<section class="filter-bar"' in html or "class=\"filter-bar\"" in html
+
+
+def test_agent_checkboxes_live_in_filter_bar_not_timeline_row(
+    tmp_path: Path,
+) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=3)
+    html = render(run_dir).read_text()
+    # Per-agent checkboxes must be inside the filter bar.
+    m = re.search(
+        r'<section class="filter-bar".*?</section>', html, re.DOTALL
+    )
+    assert m is not None
+    bar = m.group(0)
+    # Expect one checkbox per cog.
+    cbs = re.findall(r'class="agent-toggle"', bar)
+    assert len(cbs) == 3
+    # Timeline rows must not contain the checkbox (so unchecking doesn't hide it).
+    rows = re.findall(
+        r'<div class="timeline-row".*?</div>\s*</div>', html, re.DOTALL
+    )
+    for row in rows:
+        assert "agent-toggle" not in row
+
+
+def test_filter_bar_contains_search_and_type_chips(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    html = render(run_dir).read_text()
+    m = re.search(
+        r'<section class="filter-bar".*?</section>', html, re.DOTALL
+    )
+    assert m is not None
+    bar = m.group(0)
+    assert 'id="search"' in bar
+    assert 'id="type-chips"' in bar
+
+
+def test_log_has_step_separators_between_distinct_steps(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {}},
+        {"step": 1, "agent": 0, "stream": "py", "type": "action",
+         "payload": {}},
+        {"step": 2, "agent": 0, "stream": "py", "type": "action",
+         "payload": {}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    # Extract just the log panel.
+    m = re.search(r'<div id="log">(.*?)</div>\s*</section>', html, re.DOTALL)
+    assert m is not None
+    log = m.group(1)
+    seps = re.findall(r'class="step-sep"', log)
+    # At least one separator between distinct steps.
+    assert len(seps) >= 2
+
+
+def test_log_has_colored_stream_tags(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {}},
+        {"step": 1, "agent": 0, "stream": "llm", "type": "llm_tool_call",
+         "payload": {"tool": "patch"}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    assert 'class="stream stream-py"' in html
+    assert 'class="stream stream-llm"' in html
+    # The literal [py]/[llm] text should not appear in the log panel.
+    m = re.search(r'<div id="log">(.*?)</div>\s*</section>', html, re.DOTALL)
+    assert m is not None
+    log = m.group(1)
+    assert "[py]" not in log
+    assert "[llm]" not in log
+
+
+def test_log_uses_per_agent_colors(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {}},
+        {"step": 0, "agent": 1, "stream": "py", "type": "action",
+         "payload": {}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2, events=events)
+    html = render(run_dir).read_text()
+    m = re.search(r'<div id="log">(.*?)</div>\s*</section>', html, re.DOTALL)
+    assert m is not None
+    log = m.group(1)
+    tags = re.findall(
+        r'<span class="agent-tag"[^>]*style="color:\s*([^"]+)"[^>]*>a(\d+)</span>',
+        log,
+    )
+    agent_to_color = {a: c for c, a in tags}
+    assert "0" in agent_to_color
+    assert "1" in agent_to_color
+    assert agent_to_color["0"] != agent_to_color["1"]
+
+
+def test_payload_text_helper_strips_stream_and_agent_prefix() -> None:
+    from cvc_policy.recorder import payload_text
+
+    ev = {"step": 7, "agent": 2, "stream": "py", "type": "target",
+          "payload": {"kind": "carbon_extractor", "pos": [1, 1]}}
+    out = payload_text(ev)
+    assert "[py]" not in out
+    assert "a2" not in out
+    # No step=... / type prefix either — just the payload bit.
+    assert "step=" not in out
+    assert "target" not in out.split()[:1]
+    # Should still contain payload values.
+    assert "carbon_extractor" in out
+
+
 def test_cgp_view_rejects_path_traversal(tmp_path: Path) -> None:
     from typer.testing import CliRunner
 

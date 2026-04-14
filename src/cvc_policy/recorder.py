@@ -56,6 +56,19 @@ def fmt(event: dict[str, Any]) -> str:
     return head
 
 
+def payload_text(event: dict[str, Any]) -> str:
+    """Render just the payload portion of an event — without the
+    `[stream]`, `a<N>`, `step=N`, or `type` prefix produced by `fmt`.
+
+    Used by the HTML viewer, where stream/agent/type are rendered as
+    separate styled spans rather than literal prefix text.
+    """
+    etype = event["type"]
+    payload = event.get("payload") or {}
+    renderer = _PAYLOAD_RENDERERS.get(etype, _fmt_payload_default)
+    return renderer(payload)
+
+
 class EventRecorder:
     def __init__(
         self,

@@ -8,7 +8,25 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from cvc_policy.recorder import fmt
+from cvc_policy.recorder import payload_text
+
+
+# 8 distinguishable hex colors for agent tags (agent_id % 8).
+_AGENT_PALETTE: list[str] = [
+    "#10b981",  # emerald
+    "#3b82f6",  # blue
+    "#a855f7",  # purple
+    "#f59e0b",  # amber
+    "#0ea5e9",  # sky
+    "#f43f5e",  # rose
+    "#84cc16",  # lime
+    "#d946ef",  # fuchsia
+]
+
+
+def agent_color(agent_id: int) -> str:
+    """Stable per-agent foreground color keyed by `agent_id % 8`."""
+    return _AGENT_PALETTE[int(agent_id) % len(_AGENT_PALETTE)]
 
 
 def _safe_script_json(obj: Any) -> str:
@@ -105,7 +123,11 @@ def render(run_dir: Path) -> Path:
             })
         agent_rows.append({"agent": a, "ticks": ticks})
 
-    # Pre-render log lines for the right-side panel.
+    # Pre-render log lines for the right-side panel as structured dicts.
+    # The template composes the final line with styled spans for stream
+    # and agent — `text` is just the payload portion (no [stream]/a<N>
+    # prefix). Step separators are inserted by the template using
+    # `loop.changed(ln.step)`.
     log_lines = []
     for i, e in enumerate(events):
         log_lines.append({
@@ -114,7 +136,7 @@ def render(run_dir: Path) -> Path:
             "agent": e.get("agent"),
             "stream": e.get("stream", ""),
             "type": e["type"],
-            "text": fmt(e),
+            "text": payload_text(e),
         })
 
     failed = [a for a in result.get("assertions", []) if not a.get("passed")]
@@ -145,6 +167,7 @@ def render(run_dir: Path) -> Path:
     }
 
     env = _env()
+    env.globals["agent_color"] = agent_color
     html = env.get_template("report.html.j2").render(**ctx)
     out = run_dir / "report.html"
     out.write_text(html)

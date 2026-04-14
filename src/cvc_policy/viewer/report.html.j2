@@ -41,13 +41,23 @@ section { background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 10px; }
 section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.05em; }
+.filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  padding: 8px 16px; background: var(--panel2); border-bottom: 1px solid var(--border);
+  min-height: 40px; }
+.filter-bar .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.filter-bar .group-label { color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.05em; font-size: 11px; margin-right: 4px; }
+.filter-bar label.agent-cb { display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border: 1px solid var(--border); border-radius: 3px;
+  background: var(--panel); cursor: pointer; font-size: 12px; }
+.filter-bar input[type="search"] { width: 240px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .chip { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--panel2); cursor: pointer; user-select: none;
   display: inline-flex; align-items: center; gap: 6px; }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .chip.off { opacity: 0.4; }
-.timeline-row { display: grid; grid-template-columns: 24px 40px 1fr;
+.timeline-row { display: grid; grid-template-columns: 40px 1fr;
   align-items: center; gap: 6px; margin-bottom: 4px; }
 .timeline-row label { color: var(--muted); font-size: 12px; }
 svg.timeline { width: 100%; height: 18px; background: var(--panel2);
@@ -77,6 +87,18 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .line.current { border-left-color: var(--accent); background: var(--panel2); }
 #log .line.hidden { display: none; }
 #log .line .meta { color: var(--muted); }
+#log .stream { display: inline-block; padding: 1px 4px; border-radius: 3px;
+  color: #fff; font-size: 10px; font-weight: 600; margin-right: 4px;
+  vertical-align: middle; }
+#log .stream-py { background: #3b82f6; }
+#log .stream-llm { background: #a855f7; }
+#log .agent-tag { display: inline-block; font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px; font-weight: 600; margin-right: 4px; vertical-align: middle; }
+#log .type { color: var(--muted); margin-right: 4px; }
+#log hr.step-sep { border: 0; border-top: 1px solid var(--border);
+  margin: 4px 0; }
+#log .step-marker { color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 0 4px; }
 footer { position: sticky; bottom: 0; background: var(--panel);
   border-top: 1px solid var(--border); padding: 8px 16px;
   display: flex; gap: 10px; align-items: center; }
@@ -114,9 +136,18 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 </div>
 {% endif %}
 
-<main>
-  <section>
-    <h2>Agent timelines</h2>
+<section class="filter-bar">
+  <div class="group">
+    <span class="group-label">Agents</span>
+    {% for a in agents %}
+    <label class="agent-cb">
+      <input type="checkbox" checked class="agent-toggle" data-agent="{{ a }}">
+      <span style="color: {{ agent_color(a) }}">a{{ a }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="group">
+    <span class="group-label">Types</span>
     <div class="chips" id="type-chips">
       {% for t, n, color in type_counts %}
       <span class="chip" data-type="{{ t }}">
@@ -125,10 +156,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       </span>
       {% endfor %}
     </div>
+  </div>
+  <div class="group" style="flex: 1; min-width: 160px;">
+    <span class="group-label">Search</span>
+    <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
+  </div>
+</section>
+
+<main>
+  <section>
+    <h2>Agent timelines</h2>
     {% for row in agent_rows %}
     <div class="timeline-row" data-agent="{{ row.agent }}">
-      <input type="checkbox" checked class="agent-toggle" data-agent="{{ row.agent }}">
-      <label>a{{ row.agent }}</label>
+      <label style="color: {{ agent_color(row.agent) }}">a{{ row.agent }}</label>
       <svg class="timeline" viewBox="0 0 1000 18" preserveAspectRatio="none"
            data-agent="{{ row.agent }}">
         {% for t in row.ticks %}
@@ -169,13 +209,16 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       <button type="button" class="tab" data-tab="llm">LLM</button>
       <button type="button" class="tab" data-tab="team">Team</button>
     </div>
-    <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
     <div id="log">
       {% for ln in log_lines %}
+      {% if loop.changed(ln.step) %}
+      <hr class="step-sep">
+      <div class="step-marker">step {{ ln.step }}</div>
+      {% endif %}
       <div class="line" data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"
            data-stream="{{ ln.stream }}"
-           data-type="{{ ln.type }}">{{ ln.text }}</div>
+           data-type="{{ ln.type }}"><span class="stream stream-{{ ln.stream }}">{{ ln.stream }}</span>{% if ln.agent is not none %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
       {% endfor %}
     </div>
   </section>
