@@ -258,8 +258,23 @@ class LLMWorker:
             stop = True
 
         if len(messages) > _HISTORY_TRIM_AT:
-            messages[:] = [messages[0]] + messages[-_HISTORY_KEEP_TAIL:]
+            messages[:] = self._trim_history(messages)
         return stop
+
+    @staticmethod
+    def _trim_history(messages: list[dict]) -> list[dict]:
+        """Trim history while never starting the kept tail on an assistant
+        turn. Assistant tool_use blocks must always be followed by a matching
+        user tool_result in the same slice — the simplest invariant that
+        guarantees this is: the first message after the preserved grounding
+        must have role=user. Walk forward from the proposed start until it
+        does."""
+        if len(messages) <= _HISTORY_KEEP_TAIL + 1:
+            return list(messages)
+        start = len(messages) - _HISTORY_KEEP_TAIL
+        while start < len(messages) and messages[start].get("role") != "user":
+            start += 1
+        return [messages[0]] + list(messages[start:])
 
     def _run(self) -> None:
         self._messages = self._initial_messages()

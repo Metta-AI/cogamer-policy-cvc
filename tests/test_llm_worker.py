@@ -79,6 +79,45 @@ def test_tool_call_read_recent_logs_emits_event():
     assert "latency_ms" in tool_events[0]["payload"]
 
 
+def test_trim_history_never_starts_with_assistant():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    worker = LLMWorker(client, agent_id=0, state=state)
+    initial = [{"role": "user", "content": "grounding"}]
+    # Build 200 alternating messages: user/assistant/user/assistant/...
+    # assistant messages carry tool_use-like blocks so we can exercise the
+    # split-pair concern.
+    msgs = list(initial)
+    for i in range(200):
+        if i % 2 == 0:
+            msgs.append(
+                {
+                    "role": "assistant",
+                    "content": [_ToolUseBlock(id=f"t{i}", name="x", input={})],
+                }
+            )
+        else:
+            msgs.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": f"t{i - 1}",
+                            "content": "ok",
+                        }
+                    ],
+                }
+            )
+    trimmed = worker._trim_history(msgs)
+    # Grounding (msgs[0]) is preserved; msgs[1] — the first message AFTER the
+    # grounding in the kept tail — must be a user turn, never an assistant turn.
+    assert trimmed[0] is msgs[0]
+    assert trimmed[0]["role"] == "user"
+    if len(trimmed) > 1:
+        assert trimmed[1]["role"] == "user"
+
+
 def test_patch_tool_emits_patch_applied_event():
     client = FakeAnthropicClient()
     client.queue_tool_use(
