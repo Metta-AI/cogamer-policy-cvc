@@ -121,9 +121,13 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         action, summary = self._invoke_sync("step", gs)
         gs.finalize_step(summary)
         if self._log.enabled("py"):
+            bias = state.resource_bias_from_llm or "-"
+            role_ov = state.llm_role_override or "-"
+            obj = state.llm_objective or "-"
             self._log.log(
                 "py",
-                f"a{self._agent_id} step={gs.step_index} role={gs.role} {summary}",
+                f"a{self._agent_id} step={gs.step_index} role={gs.role} "
+                f"bias={bias} role_ov={role_ov} obj={obj} {summary}",
             )
 
         # Heartbeat: feed the LLM a periodic snapshot.
@@ -142,6 +146,17 @@ def _log(q: queue.Queue, event: dict) -> None:
         pass
 
 
+def _truthy(value: Any) -> bool:
+    """Handles both real bools and CLI-style string values ('1','true','yes')."""
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "y", "t"}
+
+
 class CvCPolicy(MultiAgentPolicy):
     """Top-level CvC policy. Spawns one LLMWorker thread per agent."""
 
@@ -154,15 +169,33 @@ class CvCPolicy(MultiAgentPolicy):
         device: str = "cpu",
         programs: dict[str, Program] | None = None,
         log: str | None = None,
+        log_py: Any = None,
+        log_llm: Any = None,
+        game_id: str | None = None,
         **kwargs: Any,
     ):
-        super().__init__(policy_env_info, device=device, **kwargs)
+        # Fail loudly on unknown kwargs — silent swallowing (mettagrid's
+        # MultiAgentPolicy takes **kwargs) masked the log-py=1 bug.
+        if kwargs:
+            raise TypeError(
+                f"CvCPolicy got unknown kwarg(s): {sorted(kwargs)}. "
+                "Known kwargs: device, programs, log, log_py, log_llm, game_id."
+            )
+        super().__init__(policy_env_info, device=device)
         self._programs = programs or all_programs()
         self._agent_policies: dict[int, StatefulAgentPolicy[CvCAgentState]] = {}
         self._llm_client: Any | None = None
         self._episode_start = time.time()
-        self._game_id = kwargs.get("game_id", f"game_{int(time.time())}")
-        self._log = LogConfig(log)
+        self._game_id = game_id if game_id is not None else f"game_{int(time.time())}"
+        # Accept any of: log=py+llm, log-py=1, log-llm=1 (kebab becomes snake).
+        parts: list[str] = []
+        if log:
+            parts.append(str(log))
+        if _truthy(log_py):
+            parts.append("py")
+        if _truthy(log_llm):
+            parts.append("llm")
+        self._log = LogConfig("+".join(parts) if parts else None)
         if self._log.enabled("py") or self._log.enabled("llm"):
             self._log.log("py", f"policy init streams={self._log!r}")
         self._init_llm()
