@@ -29,6 +29,21 @@ def agent_color(agent_id: int) -> str:
     return _AGENT_PALETTE[int(agent_id) % len(_AGENT_PALETTE)]
 
 
+_ROLE_GLYPHS: dict[str, str] = {
+    "miner": "\u26cf",          # pickaxe
+    "aligner": "\U0001f517",    # link
+    "scrambler": "\U0001f300",  # cyclone / spiral
+    "scout": "\U0001f52d",      # telescope
+}
+
+
+def role_glyph(role: Any) -> str:
+    """Return the unicode glyph for a role, or empty string for unknown/None."""
+    if not isinstance(role, str):
+        return ""
+    return _ROLE_GLYPHS.get(role, "")
+
+
 def _safe_script_json(obj: Any) -> str:
     """Serialize to JSON and neutralize sequences that would break out
     of a `<script type="application/json">` island (XSS vector).
@@ -202,6 +217,22 @@ def render(run_dir: Path) -> Path:
     agents = _agent_ids(events, cogs)
     max_step = max((int(e.get("step", 0)) for e in events), default=0)
 
+    # Track the most recent action-emitted role per agent so non-action
+    # events inherit the icon of that agent's last role.
+    last_role_by_agent: dict[int, str] = {}
+    role_by_event_idx: dict[int, str | None] = {}
+    for i, e in enumerate(events):
+        agent = e.get("agent")
+        if agent is None:
+            role_by_event_idx[i] = None
+            continue
+        payload = e.get("payload") or {}
+        if e.get("type") == "action":
+            r = payload.get("role")
+            if isinstance(r, str):
+                last_role_by_agent[int(agent)] = r
+        role_by_event_idx[i] = last_role_by_agent.get(int(agent))
+
     # Pre-render log lines for the right-side panel as structured dicts.
     # The template composes the final line with styled spans for stream
     # and agent — `text` is just the payload portion (no [stream]/a<N>
@@ -214,6 +245,7 @@ def render(run_dir: Path) -> Path:
             "stream": e.get("stream", ""),
             "type": e["type"],
             "text": payload_text(e),
+            "role": role_by_event_idx.get(idx),
         }
 
     # Stable event-to-index map so `data-idx` matches the embedded
@@ -263,6 +295,7 @@ def render(run_dir: Path) -> Path:
 
     env = _env()
     env.globals["agent_color"] = agent_color
+    env.globals["role_glyph"] = role_glyph
     html = env.get_template("report.html.j2").render(**ctx)
     out = run_dir / "report.html"
     out.write_text(html)

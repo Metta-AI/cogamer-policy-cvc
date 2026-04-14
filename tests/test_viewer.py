@@ -1168,3 +1168,105 @@ def test_render_click_handler_jumps_scrubber_to_step(tmp_path: Path) -> None:
     # Handler reads a step from the target's data-step and calls setStep.
     assert "closest('.line, .step-marker, .step-range')" in html
     assert "setStep(step)" in html
+
+
+# ---------------------------------------------------------------------------
+# Feature 1: Role icon inline in each log line
+# ---------------------------------------------------------------------------
+
+
+def _find_line_block(html: str, idx: int) -> str:
+    """Return the substring of a .line div with `data-idx=N`."""
+    m = re.search(
+        r'<div class="line" data-idx="' + str(idx) + r'"[^>]*>(.*?)</div>',
+        html,
+        re.DOTALL,
+    )
+    assert m is not None, f"could not locate .line idx={idx} in html"
+    return m.group(0)
+
+
+def test_role_glyph_helper_maps_known_roles() -> None:
+    from cvc_policy.viewer.render import role_glyph
+
+    assert role_glyph("miner") == "\u26cf"        # pickaxe
+    assert role_glyph("aligner") == "\U0001f517"  # link
+    assert role_glyph("scrambler") == "\U0001f300"  # spiral
+    assert role_glyph("scout") == "\U0001f52d"  # telescope
+    # fallthrough: unknown returns empty
+    assert role_glyph("nope") == ""
+    assert role_glyph(None) == ""
+
+
+def test_action_event_renders_role_icon_inline(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"role": "miner", "summary": "noop"}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    block = _find_line_block(html, 0)
+    # Glyph + title attribute next to the agent tag.
+    assert 'class="role-icon"' in block
+    assert 'title="miner"' in block
+    assert "\u26cf" in block  # pickaxe
+
+
+def test_non_action_event_inherits_prior_role(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"role": "aligner", "summary": "noop"}},
+        # Different event type for SAME agent — should inherit aligner.
+        {"step": 1, "agent": 0, "stream": "py", "type": "target",
+         "payload": {"kind": "junction", "pos": [1, 1]}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    # Second line (idx=1) inherits aligner glyph.
+    block = _find_line_block(html, 1)
+    assert 'title="aligner"' in block
+    assert "\U0001f517" in block
+
+
+def test_team_event_has_no_role_icon(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"role": "miner", "summary": "noop"}},
+        {"step": 1, "agent": None, "stream": "py", "type": "note",
+         "payload": {"text": "hi"}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    # Team event (agent=None) — no role-icon span on that line.
+    block = _find_line_block(html, 1)
+    assert "role-icon" not in block
+
+
+def test_role_icon_css_present(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1)
+    html = render(run_dir).read_text()
+    assert "#log .role-icon" in html
+
+
+def test_unknown_role_is_ignored(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"role": "banana", "summary": "noop"}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    block = _find_line_block(html, 0)
+    # Unknown role: no glyph span emitted.
+    assert "role-icon" not in block
+
+
