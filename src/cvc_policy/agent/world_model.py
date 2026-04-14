@@ -122,6 +122,26 @@ class WorldModel:
             return entity
         return None
 
+    def summary(self) -> dict[str, int]:
+        """Compact snapshot for world_model_summary events.
+
+        `known_cells` = total entities observed (placeholder — we do not
+        yet track free cells). `extractors_known` counts *_extractor
+        entities. `frontier_cells` is reserved and currently 0.
+        `reachable_cells` is a heuristic upper bound (2 * known_cells + 1)
+        that makes coverage ratios meaningful only for delta checks —
+        see docs/plans/2026-04-15-diagnostic-framework-design.md §7a.
+        """
+        entities = list(self._entities.values())
+        extractors = sum(1 for e in entities if e.entity_type.endswith("_extractor"))
+        known = len(entities)
+        return {
+            "known_cells": known,
+            "frontier_cells": 0,
+            "extractors_known": extractors,
+            "reachable_cells": max(known * 2, 1),
+        }
+
     def forget_nearest(
         self,
         *,

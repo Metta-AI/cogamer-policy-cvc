@@ -324,9 +324,24 @@ class CvCPolicy(MultiAgentPolicy):
 
         atexit.unregister(self._on_episode_end)
         self._stop_workers()
+        self._emit_world_model_summaries()
         self._write_trace()
         if self._record_dir:
             self._recorder.flush_json(Path(self._record_dir) / "events.json")
+
+    def _emit_world_model_summaries(self) -> None:
+        """Emit one world_model_summary event per agent at episode end."""
+        for agent_id, wrapper in self._agent_policies.items():
+            st: CvCAgentState | None = getattr(wrapper, "_state", None)
+            if st is None or st.game_state is None:
+                continue
+            wm = st.game_state.world_model
+            self._recorder.emit(
+                type="world_model_summary",
+                agent=agent_id,
+                stream="py",
+                payload=wm.summary(),
+            )
 
     def _write_trace(self) -> None:
         """Write LLM↔Python communication trace to disk for analysis."""

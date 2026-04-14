@@ -158,6 +158,8 @@ def mining_trips_efficient(
 
 
 def map_coverage_at_least(*, agent: int, fraction: float) -> Callable[[Run], AssertResult]:
+    """Assert known_cells / reachable_cells >= fraction on the final summary."""
+
     def _check(run: Run) -> AssertResult:
         summaries = [
             e
@@ -194,6 +196,76 @@ def map_coverage_at_least(*, agent: int, fraction: float) -> Callable[[Run], Ass
     return _check
 
 
+def extractors_known_at_least(
+    *, agent: int, minimum: int
+) -> Callable[[Run], AssertResult]:
+    """Assert the final world_model_summary saw >= `minimum` extractors."""
+
+    def _check(run: Run) -> AssertResult:
+        summaries = [
+            e
+            for e in run.events_of_type("world_model_summary")
+            if e.get("agent") == agent
+        ]
+        if not summaries:
+            return AssertResult(
+                name="extractors_known_at_least",
+                passed=False,
+                message="no world_model_summary event",
+            )
+        last = summaries[-1]
+        n = last["payload"].get("extractors_known", 0)
+        if n >= minimum:
+            return AssertResult(
+                name="extractors_known_at_least",
+                passed=True,
+                message=f"{n} extractors known >= {minimum}",
+            )
+        return AssertResult(
+            name="extractors_known_at_least",
+            passed=False,
+            message=f"only {n} extractors known (need {minimum})",
+            failed_at_step=last["step"],
+        )
+
+    return _check
+
+
+def known_cells_at_least(
+    *, agent: int, minimum: int
+) -> Callable[[Run], AssertResult]:
+    """Assert the final world_model_summary has known_cells >= minimum."""
+
+    def _check(run: Run) -> AssertResult:
+        summaries = [
+            e
+            for e in run.events_of_type("world_model_summary")
+            if e.get("agent") == agent
+        ]
+        if not summaries:
+            return AssertResult(
+                name="known_cells_at_least",
+                passed=False,
+                message="no world_model_summary event",
+            )
+        last = summaries[-1]
+        n = last["payload"].get("known_cells", 0)
+        if n >= minimum:
+            return AssertResult(
+                name="known_cells_at_least",
+                passed=True,
+                message=f"known_cells {n} >= {minimum}",
+            )
+        return AssertResult(
+            name="known_cells_at_least",
+            passed=False,
+            message=f"known_cells {n} < {minimum}",
+            failed_at_step=last["step"],
+        )
+
+    return _check
+
+
 __all__ = [
     "AssertResult",
     "no_crash",
@@ -202,4 +274,6 @@ __all__ = [
     "no_target_at",
     "mining_trips_efficient",
     "map_coverage_at_least",
+    "extractors_known_at_least",
+    "known_cells_at_least",
 ]
