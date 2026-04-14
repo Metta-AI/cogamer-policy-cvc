@@ -79,13 +79,16 @@ def _validate_policy_kwargs(policy_kwargs: dict[str, Any]) -> None:
         )
 
 
-def _drive_rollout(*, env_cfg: Any, spec: PolicySpec, run_dir: Path, seed: int) -> int:
+def _drive_rollout(*, env_cfg: Any, spec: PolicySpec, run_dir: Path, seed: int) -> int:  # pragma: no cover
     """Run one episode. Returns steps executed.
 
     Inlines the `run_episode_local` flow so we can call
     `CvCPolicy._on_episode_end` synchronously after rollout (to flush
     events.json before assertion code reads it). Atexit-only flush
     would not fire until interpreter shutdown.
+
+    Not unit-testable without a real mettagrid env; exercised by the
+    scenario-marked tests (tests/scenarios/).
     """
     env_for_rollout = resolve_env_for_seed(env_cfg, seed)
     env_interface = PolicyEnvInterface.from_mg_cfg(env_for_rollout)

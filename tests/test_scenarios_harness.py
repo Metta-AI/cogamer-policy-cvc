@@ -132,6 +132,44 @@ def test_run_scenario_runs_setup_hook(tmp_path: Path) -> None:
     assert len(called) == 1
 
 
+def test_resolve_mission_machina_default_cogs() -> None:
+    m = resolve_mission("machina_1")
+    assert m.num_agents >= 1
+
+
+def test_resolve_mission_tutorial_with_cogs() -> None:
+    m = resolve_mission("tutorial.miner", cogs=1)
+    assert m.num_agents == 1
+
+
+def test_run_scenario_variants_applied(tmp_path: Path) -> None:
+    def _capture(**kwargs: Any) -> int:
+        return _stub_drive(**kwargs)
+
+    # Cover the `if scenario.variants:` branch (line 159-160)
+    s = Scenario(
+        name="variants_test", tier=0, mission="tutorial.miner", cogs=1, steps=3,
+        variants=("miner",),
+    )
+    with patch("cvc_policy.scenarios.harness._drive_rollout", side_effect=_capture):
+        run_scenario(s, runs_root=tmp_path)
+
+
+def test_run_scenario_variant_overrides_applied(tmp_path: Path) -> None:
+    def _capture(**kwargs: Any) -> int:
+        return _stub_drive(**kwargs)
+
+    # Cover the `for vname, patches in scenario.variant_overrides.items():`
+    # branch (lines 163-166). description is a writable field on the variant.
+    s = Scenario(
+        name="variant_override", tier=0, mission="tutorial.miner", cogs=1, steps=3,
+        variants=("miner",),
+        variant_overrides={"miner": {"description": "tweaked"}},
+    )
+    with patch("cvc_policy.scenarios.harness._drive_rollout", side_effect=_capture):
+        run_scenario(s, runs_root=tmp_path)
+
+
 def test_run_scenario_rejects_unknown_policy_kwargs(tmp_path: Path) -> None:
     s = Scenario(
         name="bad_kwargs", tier=0, mission="machina_1", cogs=1, steps=3,
