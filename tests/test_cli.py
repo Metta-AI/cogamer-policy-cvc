@@ -86,6 +86,48 @@ def test_scenario_run_unknown_name_exits_nonzero(tmp_path) -> None:
     assert result.exit_code != 0
 
 
+def test_play_builds_scenario_from_cli_args(tmp_path, monkeypatch) -> None:
+    from cvc_policy.scenarios._run import Run
+    import cvc_policy.cli as cli_mod
+
+    captured = {}
+
+    def fake_run_scenario(scenario, **kwargs):
+        captured["scenario"] = scenario
+        captured["kwargs"] = kwargs
+        run_dir = kwargs["runs_root"] / "manual-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "events.json").write_text("[]")
+        (run_dir / "result.json").write_text(
+            '{"run_id": "manual-run", "status": "passed", "assertions": [], '
+            '"steps": 10, "duration_s": 0.5}'
+        )
+        return Run(run_dir)
+
+    monkeypatch.setattr(cli_mod, "run_scenario", fake_run_scenario)
+    result = CliRunner().invoke(
+        app,
+        [
+            "play",
+            "-m", "machina_1",
+            "-c", "2",
+            "-s", "30",
+            "--seed", "7",
+            "--override", "max_steps=30",
+            "--policy-args", "log_py=true",
+            "--runs-root", str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    s = captured["scenario"]
+    assert s.mission == "machina_1"
+    assert s.cogs == 2
+    assert s.steps == 30
+    assert s.seed == 7
+    assert s.mission_overrides == {"max_steps": 30}
+    assert s.policy_kwargs == {"log_py": True}
+
+
 def test_scenario_run_all_tier_filter(tmp_path, monkeypatch) -> None:
     import cvc_policy.scenarios.cases.smoke  # noqa: F401
     import cvc_policy.scenarios.cases.exploration_small  # noqa: F401

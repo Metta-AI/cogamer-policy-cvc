@@ -137,9 +137,67 @@ def runs() -> None:
 
 
 @app.command("play")
-def play() -> None:
-    """Play a mission ad-hoc with overrides. Stub until Task 2.12."""
-    typer.echo("play: not yet implemented (Task 2.12)")
+def play(
+    mission: str = typer.Option(..., "-m", "--mission", help="Mission name (e.g. machina_1)."),
+    variant: list[str] = typer.Option(
+        [], "-v", "--variant", help="Variant name; repeat flag to add multiple."
+    ),
+    cogs: int = typer.Option(1, "-c", "--cogs", help="Number of cogs."),
+    steps: int = typer.Option(500, "-s", "--steps", help="Max episode steps."),
+    seed: int = typer.Option(42, "--seed"),
+    override: list[str] = typer.Option(
+        [], "--override", help="Mission field override KEY=VALUE (repeatable)."
+    ),
+    variant_override: list[str] = typer.Option(
+        [], "--variant-override", help="Variant field override VARIANT.KEY=VALUE (repeatable)."
+    ),
+    policy_args: list[str] = typer.Option(
+        [], "--policy-args", help="Policy kwarg KEY=VALUE (repeatable)."
+    ),
+    record: bool = typer.Option(
+        True, "--record/--no-record", help="Write a run folder under --runs-root."
+    ),
+    runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+) -> None:
+    """Play a mission ad-hoc with optional mission/variant/policy overrides."""
+    from cvc_policy.overrides import parse_override, parse_variant_override
+    from cvc_policy.scenarios import Scenario
+
+    mission_overrides: dict[str, object] = {}
+    for spec in override:
+        k, v = parse_override(spec)
+        mission_overrides[k] = v
+
+    v_overrides: dict[str, dict[str, object]] = {}
+    for spec in variant_override:
+        vname, k, val = parse_variant_override(spec)
+        v_overrides.setdefault(vname, {})[k] = val
+
+    policy_kwargs: dict[str, object] = {}
+    for spec in policy_args:
+        k, val = parse_override(spec)
+        policy_kwargs[k] = val
+
+    synthetic = Scenario(
+        name="manual",
+        tier=-1,
+        mission=mission,
+        variants=tuple(variant),
+        cogs=cogs,
+        steps=steps,
+        seed=seed,
+        policy_kwargs=policy_kwargs,
+        mission_overrides=mission_overrides,
+        variant_overrides=v_overrides,
+        assertions=[],
+    )
+    if not record:
+        import tempfile
+
+        runs_root = Path(tempfile.mkdtemp(prefix="cgp-play-"))
+    run = run_scenario(synthetic, runs_root=runs_root)
+    typer.echo(f"manual run: {run.run_dir}")
+    typer.echo(f"steps: {run.result.get('steps')}  duration: {run.result.get('duration_s'):.2f}s")
 
 
 @app.command("test-cov")
