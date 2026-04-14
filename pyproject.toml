@@ -37,6 +37,24 @@ markers = [
   "scenario: scenario harness tests that build real mettagrid envs; excluded by default. Run with `pytest -m scenario`.",
 ]
 
+[tool.coverage.run]
+source = ["cvc_policy"]
+omit = [
+  # Unused coglet supervision-tree scaffolding — not reached from the
+  # CvCPolicy runtime path. See docs/coverage-audit.md.
+  "src/cvc_policy/runtime.py",
+  "src/cvc_policy/lifelet.py",
+  "src/cvc_policy/ticklet.py",
+  "src/cvc_policy/trace.py",
+  "src/cvc_policy/llm_executor.py",
+  "src/cvc_policy/coglet.py",
+  "src/cvc_policy/channel.py",
+  "src/cvc_policy/handle.py",
+  "src/cvc_policy/proglet.py",
+  # One-shot subprocess bootstrap script.
+  "src/cvc_policy/setup_policy.py",
+]
+
 [tool.uv.sources]
 cogames = {git = "https://github.com/Metta-AI/cogames.git"}
 mettagrid = {git = "https://github.com/Metta-AI/mettagrid.git"}
