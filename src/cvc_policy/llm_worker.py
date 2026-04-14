@@ -159,27 +159,48 @@ class LLMWorker:
         if args.get("objective"):
             state.llm_objective = args["objective"]
             applied["objective"] = args["objective"]
+        rationale = args.get("rationale", "")
         state.llm_log.append(
             {
                 "agent": self._agent_id,
                 "type": "patch",
                 "applied": applied,
-                "rationale": args.get("rationale", ""),
+                "rationale": rationale,
             }
+        )
+        self._recorder.emit(
+            type="patch_applied",
+            agent=self._agent_id,
+            stream="llm",
+            payload={"applied": applied, "rationale": rationale},
         )
         return {"ok": True, "applied": applied}
 
     def _dispatch_tool(self, name: str, args: dict) -> dict:
+        t0 = time.perf_counter()
         if name == "read_recent_logs":
-            return self._tool_read_recent_logs(args)
-        if name == "patch":
-            return self._tool_patch(args)
-        return {"error": f"unknown tool: {name}"}
+            out = self._tool_read_recent_logs(args)
+        elif name == "patch":
+            out = self._tool_patch(args)
+        else:
+            out = {"error": f"unknown tool: {name}"}
+        latency_ms = (time.perf_counter() - t0) * 1000
+        self._recorder.emit(
+            type="llm_tool_call",
+            agent=self._agent_id,
+            stream="llm",
+            payload={
+                "tool": name,
+                "input": dict(args),
+                "latency_ms": round(latency_ms, 2),
+            },
+        )
+        return out
 
     # ── main loop ───────────────────────────────────────────────────────
 
-    def _run(self) -> None:
-        messages: list[dict] = [
+    def _initial_messages(self) -> list[dict]:
+        return [
             {
                 "role": "user",
                 "content": (
@@ -191,45 +212,59 @@ class LLMWorker:
             }
         ]
 
-        while not self._shutdown.is_set():
-            t0 = time.perf_counter()
-            response = self._client.messages.create(
-                model=_MODEL,
-                max_tokens=_MAX_TOKENS,
-                system=_SYSTEM,
-                tools=_TOOLS,
-                messages=messages,
-            )
-            latency_ms = (time.perf_counter() - t0) * 1000
-            self._state.llm_latencies.append(latency_ms)
+    def _step_once(self, messages: list[dict] | None = None) -> bool:
+        """Run one request/response round-trip. Returns True if the loop
+        should exit (shutdown sentinel or end_turn in single-step tests)."""
+        if messages is None:
+            if not hasattr(self, "_messages"):
+                self._messages = self._initial_messages()
+            messages = self._messages
 
-            messages.append({"role": "assistant", "content": response.content})
+        t0 = time.perf_counter()
+        response = self._client.messages.create(
+            model=_MODEL,
+            max_tokens=_MAX_TOKENS,
+            system=_SYSTEM,
+            tools=_TOOLS,
+            messages=messages,
+        )
+        latency_ms = (time.perf_counter() - t0) * 1000
+        self._state.llm_latencies.append(latency_ms)
 
-            if response.stop_reason == "tool_use":
-                tool_results: list[dict] = []
-                shutdown_requested = False
-                for block in response.content:
-                    if getattr(block, "type", None) != "tool_use":
-                        continue
-                    out = self._dispatch_tool(block.name, dict(block.input or {}))
-                    if out.get("shutdown"):
-                        shutdown_requested = True
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(out),
-                        }
-                    )
-                messages.append({"role": "user", "content": tool_results})
-                if shutdown_requested:
-                    return
-            else:
-                # No tool call. Nudge it to keep going.
-                messages.append(
-                    {"role": "user", "content": "Continue. Call read_recent_logs."}
+        messages.append({"role": "assistant", "content": response.content})
+
+        stop = False
+        if response.stop_reason == "tool_use":
+            tool_results: list[dict] = []
+            for block in response.content:
+                if getattr(block, "type", None) != "tool_use":
+                    continue
+                out = self._dispatch_tool(block.name, dict(block.input or {}))
+                if out.get("shutdown"):
+                    stop = True
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(out),
+                    }
                 )
+            messages.append({"role": "user", "content": tool_results})
+        else:
+            # No tool call. Nudge the model to resume polling.
+            messages.append(
+                {"role": "user", "content": "Continue. Call read_recent_logs."}
+            )
+            stop = True
 
-            # Prevent unbounded growth. Keep the grounding prompt + recent tail.
-            if len(messages) > _HISTORY_TRIM_AT:
-                messages = [messages[0]] + messages[-_HISTORY_KEEP_TAIL:]
+        if len(messages) > _HISTORY_TRIM_AT:
+            messages[:] = [messages[0]] + messages[-_HISTORY_KEEP_TAIL:]
+        return stop
+
+    def _run(self) -> None:
+        self._messages = self._initial_messages()
+        while not self._shutdown.is_set():
+            # _step_once returns True on end_turn or shutdown. In production
+            # we keep looping regardless of end_turn (a nudge was appended);
+            # we only exit when the shutdown event is set.
+            self._step_once(self._messages)
