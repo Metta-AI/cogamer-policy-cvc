@@ -55,6 +55,17 @@ def test_resolve_mission_unknown_raises() -> None:
         resolve_mission("does_not_exist")
 
 
+def test_resolve_mission_unknown_lists_valid_names() -> None:
+    """The error should list known missions so typos self-diagnose."""
+    with pytest.raises(KeyError) as excinfo:
+        resolve_mission("no_such")
+    msg = str(excinfo.value)
+    assert "no_such" in msg
+    # All known names should appear in the message.
+    for name in ("machina_1", "tutorial.miner", "tutorial.aligner"):
+        assert name in msg
+
+
 def test_run_scenario_writes_run_folder(tmp_path: Path) -> None:
     s = Scenario(
         name="my_test", tier=0, mission="machina_1", cogs=2, steps=3,

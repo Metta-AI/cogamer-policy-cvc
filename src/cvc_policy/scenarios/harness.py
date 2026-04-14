@@ -14,7 +14,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mettagrid.policy.loader import initialize_or_load_policy
 from mettagrid.policy.policy import PolicySpec
@@ -25,14 +25,32 @@ from cvc_policy.scenarios import Scenario
 from cvc_policy.scenarios._run import Run
 
 
-# Hard-coded mission registry. Fails loud on unknown names; see
+def _build_machina_1(cogs: int | None) -> Any:
+    from cogames.games.cogs_vs_clips.missions.machina_1 import make_machina1_mission
+
+    if cogs is not None:
+        return make_machina1_mission(num_agents=cogs)
+    return make_machina1_mission()
+
+
+def _build_tutorial(role: str, cogs: int | None) -> Any:
+    from cogames.games.cogs_vs_clips.missions.tutorial import make_tutorial_mission
+
+    mission = make_tutorial_mission()
+    if cogs is not None:
+        mission = mission.model_copy(update={"num_agents": cogs, "num_cogs": cogs})
+    return mission.with_variants([role])
+
+
+# Mission registry — the single source of truth for resolve_mission.
+# Fails loud on unknown names; see
 # docs/plans/2026-04-15-diagnostic-framework-design.md §7a for rationale.
-_KNOWN_MISSIONS: dict[str, str] = {
-    "machina_1": "machina_1",
-    "tutorial.aligner": "aligner",
-    "tutorial.miner": "miner",
-    "tutorial.scrambler": "scrambler",
-    "tutorial.scout": "scout",
+_KNOWN_MISSIONS: dict[str, Callable[[int | None], Any]] = {
+    "machina_1": _build_machina_1,
+    "tutorial.aligner": lambda cogs: _build_tutorial("aligner", cogs),
+    "tutorial.miner": lambda cogs: _build_tutorial("miner", cogs),
+    "tutorial.scrambler": lambda cogs: _build_tutorial("scrambler", cogs),
+    "tutorial.scout": lambda cogs: _build_tutorial("scout", cogs),
 }
 
 # CvCPolicy kwargs we pass through to PolicySpec.init_kwargs. Validated
@@ -44,28 +62,12 @@ _ALLOWED_POLICY_KWARGS: frozenset[str] = frozenset(
 
 
 def resolve_mission(name: str, *, cogs: int | None = None) -> Any:
-    """Build a mission object from a registry name.
-
-    `machina_1` → `make_machina1_mission(num_agents=cogs or default)`.
-    `tutorial.<role>` → `make_tutorial_mission().with_variants([role])`.
-    """
-    if name == "machina_1":
-        from cogames.games.cogs_vs_clips.missions.machina_1 import make_machina1_mission
-
-        if cogs is not None:
-            return make_machina1_mission(num_agents=cogs)
-        return make_machina1_mission()
-    if name.startswith("tutorial."):
-        role = name.split(".", 1)[1]
-        if role not in ("aligner", "miner", "scrambler", "scout"):
-            raise KeyError(f"unknown tutorial sub-mission: {role}")
-        from cogames.games.cogs_vs_clips.missions.tutorial import make_tutorial_mission
-
-        mission = make_tutorial_mission()
-        if cogs is not None:
-            mission = mission.model_copy(update={"num_agents": cogs, "num_cogs": cogs})
-        return mission.with_variants([role])
-    raise KeyError(f"unknown mission: {name!r}")
+    """Build a mission object from a registry name."""
+    builder = _KNOWN_MISSIONS.get(name)
+    if builder is None:
+        valid = ", ".join(sorted(_KNOWN_MISSIONS))
+        raise KeyError(f"unknown mission: {name!r}. Valid: {valid}")
+    return builder(cogs)
 
 
 def _validate_policy_kwargs(policy_kwargs: dict[str, Any]) -> None:
