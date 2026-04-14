@@ -88,17 +88,16 @@ def test_report_has_no_timeline_svgs(tmp_path: Path) -> None:
     assert len(svgs) == 0
 
 
-def test_report_main_has_two_columns(tmp_path: Path) -> None:
+def test_report_main_has_replay_handle_log_columns(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     run_dir = _write_fake_run(tmp_path / "r", cogs=3)
     html = render(run_dir).read_text()
-    # main grid declares exactly two columns.
-    m = re.search(r"main\s*\{[^}]*grid-template-columns:\s*([^;]+);", html)
-    assert m is not None, "main grid-template-columns not found"
-    cols = m.group(1).strip()
-    # Two non-empty tokens means a 2-column grid.
-    assert len([t for t in cols.split() if t]) == 2, f"expected 2 columns, got: {cols}"
+    # Three slots: replay column, drag handle, log column. The grid uses
+    # a CSS variable so the JS resize can override the default ratio.
+    assert 'id="main-grid"' in html
+    assert 'id="col-resize"' in html
+    assert "grid-template-columns: var(--main-cols" in html
 
 
 def test_report_layout_fills_viewport_height(tmp_path: Path) -> None:

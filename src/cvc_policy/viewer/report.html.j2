@@ -37,15 +37,28 @@ header .meta { color: var(--muted); }
 .banner-fail button { background: transparent; color: var(--bad);
   border: 1px solid var(--bad); padding: 2px 8px; margin-right: 8px;
   cursor: pointer; font-family: inherit; }
-main { display: grid; grid-template-columns: 3fr 2fr; gap: 10px;
+main { display: grid; grid-template-columns: var(--main-cols, 3fr 2fr); gap: 0;
   padding: 10px; flex: 1 1 auto; min-height: 0; }
+#col-resize { width: 6px; cursor: col-resize; background: transparent;
+  border-left: 1px solid transparent; border-right: 1px solid transparent;
+  user-select: none; touch-action: none; }
+#col-resize:hover, #col-resize.dragging {
+  background: var(--accent); opacity: 0.4; }
+main > section { margin: 0 4px; }
 section { background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 10px;
   display: flex; flex-direction: column; min-height: 0; }
 section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.05em; }
+.log-card h2 { display: flex; align-items: center; gap: 8px; }
+.log-card h2 .filters-toggle { margin-left: auto; font-size: 0.75em;
+  padding: 1px 8px; border: 1px solid var(--border); border-radius: 3px;
+  background: var(--panel2); color: var(--fg); cursor: pointer;
+  font-family: inherit; text-transform: none; letter-spacing: 0; }
+.log-card h2 .filters-toggle.collapsed { opacity: 0.6; }
 .log-card .log-filters { display: flex; flex-direction: column; gap: 6px;
   padding: 6px 0; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.log-card .log-filters.collapsed { display: none; }
 .log-card .log-filters .row { display: flex; flex-wrap: wrap; gap: 6px;
   align-items: center; }
 .log-card .log-filters .group-label { color: var(--muted); text-transform: uppercase;
@@ -82,6 +95,9 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .line.merged-hidden { display: none; }
 #log .step-marker.merged-hidden { display: none; }
 #log .step-marker.hidden { display: none; }
+#log hr.step-sep.hr-hidden { display: none; }
+#log .step-range-badge { color: var(--muted); margin-right: 6px;
+  opacity: 0.7; font-size: 0.85em; font-style: italic; }
 #log .line { cursor: pointer; }
 #log .step-marker { cursor: pointer; }
 #log .line .meta { color: var(--muted); }
@@ -143,7 +159,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 </div>
 {% endif %}
 
-<main>
+<main id="main-grid">
   <section class="replay-card">
     <h2>Replay</h2>
     {% if has_replay %}
@@ -154,9 +170,14 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     {% endif %}
   </section>
 
+  <div id="col-resize" role="separator" aria-orientation="vertical" tabindex="0"></div>
+
   <section class="log-card">
-    <h2>Log</h2>
-    <div class="log-filters">
+    <h2>Log
+      <button type="button" id="filters-toggle" class="filters-toggle"
+        aria-expanded="true" title="Show/hide filters">filters</button>
+    </h2>
+    <div class="log-filters" id="log-filters">
       <div class="row">
         <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
       </div>
@@ -207,26 +228,15 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   </section>
 </main>
 
-<footer>
-  <button type="button" id="play">Play</button>
-  <input type="range" id="scrubber" min="0" max="{{ max_step }}" value="0">
-  <span id="step-label">step 0 / {{ max_step }}</span>
-  <select id="speed">
-    <option value="1">1x</option>
-    <option value="4">4x</option>
-    <option value="16">16x</option>
-  </select>
-</footer>
-
 <script type="application/json" id="events">{{ events_json|safe }}</script>
 <script>
 (function () {
   var events = JSON.parse(document.getElementById('events').textContent);
   var maxStep = {{ max_step }};
-  var scrub = document.getElementById('scrubber');
-  var stepLabel = document.getElementById('step-label');
-  var playBtn = document.getElementById('play');
-  var speedSel = document.getElementById('speed');
+  // Mettascope owns scrubber UI; setStep tracks the step internally so
+  // log highlighting + click-to-jump still work, but no on-page scrubber.
+  var scrub = { value: 0 };
+  var stepLabel = { textContent: '' };
   var search = document.getElementById('search');
   var log = document.getElementById('log');
   var typeChips = document.getElementById('type-chips');
@@ -235,8 +245,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   var hiddenTypes = {};
   var hiddenAgents = {};
   var currentTab = 'all';
-  var playing = false;
-  var timer = null;
 
   var currentStep = -1;
   var suppressMettascopePush = false;
@@ -281,23 +289,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     if (firstCurrent) firstCurrent.scrollIntoView({block: 'nearest'});
   }
 
-  scrub.addEventListener('input', function () { setStep(+scrub.value); });
-
-  playBtn.addEventListener('click', function () {
-    playing = !playing;
-    playBtn.textContent = playing ? 'Pause' : 'Play';
-    if (timer) { clearInterval(timer); timer = null; }
-    if (playing) {
-      var speed = +speedSel.value;
-      timer = setInterval(function () {
-        var s = +scrub.value + speed;
-        if (s >= maxStep) { s = maxStep; playing = false;
-          playBtn.textContent = 'Play'; clearInterval(timer); timer = null; }
-        setStep(s);
-      }, 50);
-    }
-  });
-
   function applyFilters() {
     var q = (search.value || '').toLowerCase();
     // Reset any prior merge state before recomputing.
@@ -305,6 +296,12 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       el.classList.remove('merged-hidden');
       el.classList.remove('hidden');
       if (el.dataset.original) el.textContent = el.dataset.original;
+    });
+    log.querySelectorAll('hr.step-sep').forEach(function (el) {
+      el.classList.remove('hr-hidden');
+    });
+    log.querySelectorAll('.step-range-badge').forEach(function (el) {
+      el.parentNode && el.parentNode.removeChild(el);
     });
     log.querySelectorAll('.line').forEach(function (el) {
       el.classList.remove('merged-hidden');
@@ -390,8 +387,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         j++;
       }
       if (runMarkers.length > 0) {
-        marker.textContent = 'step ' + step + '..' + runEnd;
-        marker.dataset.stepEnd = runEnd;
+        // Hide the start step-marker too — the range is shown inline on
+        // the kept line as a compact `[a..b]` badge so the merge
+        // collapses to ONE visible line, not a header + line pair.
+        marker.classList.add('merged-hidden');
+        var badge = firstLine.querySelector('.step-range-badge');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'step-range-badge';
+          firstLine.insertBefore(badge, firstLine.firstChild);
+        }
+        badge.textContent = '[' + step + '..' + runEnd + '] ';
         runMarkers.forEach(function (m) { m.classList.add('merged-hidden'); });
         runLines.forEach(function (l) { l.classList.add('merged-hidden'); });
       } else {
@@ -399,6 +405,21 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       }
       i = j;
     }
+    // Hide hr separators between elements that are both hidden, so the
+    // log doesn't show stacked empty rules between merged-hidden runs
+    // or filter-hidden chunks.
+    var hrs = log.querySelectorAll('hr.step-sep');
+    hrs.forEach(function (hr) {
+      function _isVisible(el) {
+        return el && !el.classList.contains('hidden')
+            && !el.classList.contains('merged-hidden');
+      }
+      var prev = hr.previousElementSibling;
+      var next = hr.nextElementSibling;
+      if (!_isVisible(prev) || !_isVisible(next)) {
+        hr.classList.add('hr-hidden');
+      }
+    });
   }
 
   // Clicking a log line, step marker, or empty-range jumps the scrubber.
@@ -444,6 +465,29 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   });
 
   search.addEventListener('input', applyFilters);
+
+  // Collapsible filter panel.
+  (function () {
+    var btn = document.getElementById('filters-toggle');
+    var panel = document.getElementById('log-filters');
+    if (!btn || !panel) return;
+    var stored = window.localStorage && localStorage.getItem('cgp-filters-collapsed');
+    if (stored === '1') {
+      panel.classList.add('collapsed');
+      btn.classList.add('collapsed');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    btn.addEventListener('click', function () {
+      var collapsed = panel.classList.toggle('collapsed');
+      btn.classList.toggle('collapsed', collapsed);
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      try {
+        if (window.localStorage) {
+          localStorage.setItem('cgp-filters-collapsed', collapsed ? '1' : '0');
+        }
+      } catch (e) { /* localStorage may be disabled */ }
+    });
+  })();
 
   document.querySelectorAll('.jump-fail').forEach(function (b) {
     b.addEventListener('click', function () { setStep(+b.dataset.step); });
@@ -514,6 +558,44 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     } else {
       iframe.outerHTML = '<div class="replay-fallback">Open via <code>cgp view</code> for embedded replay (needs HTTP server).</div>';
     }
+  })();
+
+  // Drag-to-resize between replay and log columns. Stores the ratio in
+  // localStorage so it survives reloads.
+  (function () {
+    var grid = document.getElementById('main-grid');
+    var handle = document.getElementById('col-resize');
+    if (!grid || !handle) return;
+    var stored = window.localStorage && localStorage.getItem('cgp-cols');
+    if (stored) grid.style.setProperty('--main-cols', stored);
+    var dragging = false;
+    var startX = 0;
+    var startLeftPx = 0;
+    function _setCols(leftPx) {
+      var totalPx = grid.getBoundingClientRect().width;
+      var rightPx = Math.max(80, totalPx - leftPx - handle.offsetWidth);
+      var leftClamped = Math.max(80, totalPx - rightPx - handle.offsetWidth);
+      var cols = leftClamped + 'px ' + handle.offsetWidth + 'px ' + rightPx + 'px';
+      grid.style.setProperty('--main-cols', cols);
+      try { if (window.localStorage) localStorage.setItem('cgp-cols', cols); }
+      catch (e) {}
+    }
+    handle.addEventListener('pointerdown', function (e) {
+      dragging = true;
+      handle.classList.add('dragging');
+      handle.setPointerCapture(e.pointerId);
+      startX = e.clientX;
+      startLeftPx = grid.firstElementChild.getBoundingClientRect().width;
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      _setCols(startLeftPx + (e.clientX - startX));
+    });
+    handle.addEventListener('pointerup', function (e) {
+      dragging = false;
+      handle.classList.remove('dragging');
+      try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+    });
   })();
 
   applyFilters();
