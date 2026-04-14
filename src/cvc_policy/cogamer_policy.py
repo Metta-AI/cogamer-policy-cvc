@@ -294,14 +294,17 @@ class CvCPolicy(MultiAgentPolicy):
         if self._agent_policies:
             self._on_episode_end()
         self._episode_start = time.time()
+        # Drop cached per-agent wrappers so the next agent_policy() call
+        # constructs fresh CvCPolicyImpl + initial_agent_state (new GameState,
+        # fresh LLM worker, empty queue). Reusing the old wrappers across
+        # episodes would carry stale GameState and dead LLM workers.
+        self._agent_policies = {}
         # Re-arm for the next episode: clear idempotency flag and re-register
         # atexit (we unregistered it at the end of the previous episode).
         self._ended = False
         import atexit
 
         atexit.register(self._on_episode_end)
-        for p in self._agent_policies.values():
-            p.reset()
 
     def _stop_workers(self) -> None:
         for wrapper in self._agent_policies.values():

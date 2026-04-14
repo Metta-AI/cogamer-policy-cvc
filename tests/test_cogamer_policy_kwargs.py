@@ -56,6 +56,14 @@ def test_no_record_dir_no_events_json(tmp_path):
     assert not (tmp_path / "events.json").exists()
 
 
+def test_reset_recreates_agent_policies():
+    p = CvCPolicy(_fake_policy_env_info())
+    a0_before = p.agent_policy(0)
+    p.reset()
+    a0_after = p.agent_policy(0)
+    assert a0_before is not a0_after
+
+
 def test_episode_end_is_idempotent(tmp_path):
     import json
 
