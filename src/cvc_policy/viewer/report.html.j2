@@ -79,6 +79,11 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   white-space: pre-wrap; word-break: break-word; }
 #log .line.current { border-left-color: var(--accent); background: var(--panel2); }
 #log .line.hidden { display: none; }
+#log .line.merged-hidden { display: none; }
+#log .step-marker.merged-hidden { display: none; }
+#log .step-marker.hidden { display: none; }
+#log .line { cursor: pointer; }
+#log .step-marker { cursor: pointer; }
 #log .line .meta { color: var(--muted); }
 #log .stream { display: inline-block; padding: 1px 4px; border-radius: 3px;
   color: #fff; font-size: 10px; font-weight: 600; margin-right: 4px;
@@ -188,16 +193,13 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       {% if g.type == "range" %}
       <div class="step-range" data-start="{{ g.start }}" data-end="{{ g.end }}">[{{ g.start }}-{{ g.end }}]</div>
       {% else %}
-      {% if g.step_end is not none and g.step_end > g.step %}
-      <div class="step-marker" data-step="{{ g.step }}" data-step-end="{{ g.step_end }}">step {{ g.step }}..{{ g.step_end }}</div>
-      {% else %}
-      <div class="step-marker" data-step="{{ g.step }}">step {{ g.step }}</div>
-      {% endif %}
+      <div class="step-marker" data-step="{{ g.step }}" data-original="step {{ g.step }}">step {{ g.step }}</div>
       {% for ln in g.lines %}
       <div class="line" data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"
            data-stream="{{ ln.stream }}"
-           data-type="{{ ln.type }}"><span class="stream stream-{{ ln.stream }}">{{ ln.stream }}</span>{% if ln.agent is not none %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
+           data-type="{{ ln.type }}"
+           data-payload="{{ ln.text }}"><span class="stream stream-{{ ln.stream }}">{{ ln.stream }}</span>{% if ln.agent is not none %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
       {% endfor %}
       {% endif %}
       {% endfor %}
@@ -278,7 +280,14 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   function applyFilters() {
     var q = (search.value || '').toLowerCase();
+    // Reset any prior merge state before recomputing.
+    log.querySelectorAll('.step-marker').forEach(function (el) {
+      el.classList.remove('merged-hidden');
+      el.classList.remove('hidden');
+      if (el.dataset.original) el.textContent = el.dataset.original;
+    });
     log.querySelectorAll('.line').forEach(function (el) {
+      el.classList.remove('merged-hidden');
       var type = el.dataset.type;
       var agent = el.dataset.agent;
       var stream = el.dataset.stream;
@@ -292,7 +301,101 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       if (q && text.indexOf(q) === -1) hide = true;
       el.classList.toggle('hidden', hide);
     });
+    // Hide step markers whose lines are all hidden (no visible content).
+    log.querySelectorAll('.step-marker').forEach(function (marker) {
+      var lines = _linesAfterMarker(marker);
+      var visible = lines.filter(function (l) { return !l.classList.contains('hidden'); });
+      if (visible.length === 0) marker.classList.add('hidden');
+    });
+    recomputeMerges();
   }
+
+  // Return the sequence of .line elements that follow this step-marker
+  // until the next step-marker / step-range.
+  function _linesAfterMarker(marker) {
+    var out = [];
+    var el = marker.nextElementSibling;
+    while (el) {
+      if (el.classList.contains('step-marker') ||
+          el.classList.contains('step-range') ||
+          el.tagName === 'HR') break;
+      if (el.classList.contains('line')) out.push(el);
+      el = el.nextElementSibling;
+    }
+    return out;
+  }
+
+  function _lineKey(ln) {
+    return (ln.dataset.agent || '') + '|' + ln.dataset.stream + '|' +
+           ln.dataset.type + '|' + (ln.dataset.payload || '');
+  }
+
+  // Walk the currently-visible step-markers and merge runs of adjacent
+  // markers that each have a single visible line with matching
+  // agent/stream/type/payload. Idempotent: reset state happens in
+  // applyFilters before this runs.
+  function recomputeMerges() {
+    var allMarkers = Array.prototype.slice.call(
+      log.querySelectorAll('.step-marker'));
+    var i = 0;
+    while (i < allMarkers.length) {
+      var marker = allMarkers[i];
+      if (marker.classList.contains('hidden')) { i++; continue; }
+      var lines = _linesAfterMarker(marker);
+      var visible = lines.filter(function (l) {
+        return !l.classList.contains('hidden');
+      });
+      if (visible.length !== 1) { i++; continue; }
+      var firstLine = visible[0];
+      var key = _lineKey(firstLine);
+      var step = parseInt(marker.dataset.step, 10);
+      var runEnd = step;
+      var runMarkers = [];
+      var runLines = [];
+      var j = i + 1;
+      while (j < allMarkers.length) {
+        var m2 = allMarkers[j];
+        if (m2.classList.contains('hidden')) { j++; continue; }
+        var step2 = parseInt(m2.dataset.step, 10);
+        if (step2 !== runEnd + 1) break;
+        var lines2 = _linesAfterMarker(m2);
+        var visible2 = lines2.filter(function (l) {
+          return !l.classList.contains('hidden');
+        });
+        if (visible2.length !== 1) break;
+        if (_lineKey(visible2[0]) !== key) break;
+        runEnd = step2;
+        runMarkers.push(m2);
+        runLines.push(visible2[0]);
+        j++;
+      }
+      if (runMarkers.length > 0) {
+        marker.textContent = 'step ' + step + '..' + runEnd;
+        marker.dataset.stepEnd = runEnd;
+        runMarkers.forEach(function (m) { m.classList.add('merged-hidden'); });
+        runLines.forEach(function (l) { l.classList.add('merged-hidden'); });
+      } else {
+        marker.removeAttribute('data-step-end');
+      }
+      i = j;
+    }
+  }
+
+  // Clicking a log line, step marker, or empty-range jumps the scrubber.
+  log.addEventListener('click', function (e) {
+    var target = e.target.closest('.line, .step-marker, .step-range');
+    if (!target || !log.contains(target)) return;
+    var step;
+    if (target.classList.contains('step-range')) {
+      step = parseInt(target.dataset.start, 10);
+    } else {
+      step = parseInt(target.dataset.step, 10);
+    }
+    if (!isNaN(step)) {
+      scrub.value = step;
+      setStep(step);
+    }
+  });
 
   typeChips.addEventListener('click', function (e) {
     var chip = e.target.closest('.chip');
@@ -379,6 +482,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     }
   })();
 
+  applyFilters();
   setStep(0);
 })();
 </script>

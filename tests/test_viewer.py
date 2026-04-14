@@ -1067,50 +1067,57 @@ def test_merge_ignores_varying_latency() -> None:
         assert len(step_groups) == 2
 
 
-def test_render_output_shows_step_range_header(tmp_path: Path) -> None:
-    """End-to-end: 10 identical steps render as one ``step 0..9`` header."""
+def test_render_emits_one_step_marker_per_step_not_pre_merged(tmp_path: Path) -> None:
+    """Duplicate-merging is client-side now; render emits one marker per step."""
     from cvc_policy.viewer import render
 
     events = [_dup_event(s) for s in range(10)]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=9)
     html = render(run_dir).read_text()
 
-    # Exactly one merged header `step 0..9` in the log panel.
-    assert re.search(
-        r'<div class="step-marker"[^>]*>\s*step\s+0\.\.9\s*</div>',
-        html,
-    ), f"missing merged step range header; log snippet: {html[html.find('step-marker'):html.find('step-marker')+400] if 'step-marker' in html else html[:400]}"
-    # And no individual `step 1` / `step 5` markers — only the merged one.
-    solo_markers = re.findall(
-        r'<div class="step-marker" data-step="(\d+)">\s*step\s+\d+\s*</div>',
+    markers = re.findall(
+        r'<div class="step-marker" data-step="(\d+)"',
         html,
     )
-    assert solo_markers == [], f"expected no solo step markers, got {solo_markers}"
+    assert [int(m) for m in markers] == list(range(10))
 
 
-def test_render_merged_range_composes_with_empty_range(tmp_path: Path) -> None:
-    """Merged step run + empty range + another merged step run all coexist."""
+def test_render_lines_have_data_payload_for_js_merging(tmp_path: Path) -> None:
+    """Each .line carries data-payload so client JS can test equality."""
     from cvc_policy.viewer import render
 
-    events = (
-        [_dup_event(s) for s in range(4)]
-        + [_dup_event(s) for s in range(100, 103)]
-    )
-    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=102)
+    events = [_dup_event(s) for s in range(3)]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=2)
     html = render(run_dir).read_text()
 
-    # First merged run `step 0..3`.
-    assert re.search(
-        r'<div class="step-marker"[^>]*data-step="0"[^>]*>\s*step\s+0\.\.3\s*</div>',
+    assert 'data-payload="' in html
+    # Three lines, each with data-payload on the .line element.
+    lines_with_payload = re.findall(
+        r'<div class="line"[^>]*data-payload="[^"]*"',
         html,
     )
-    # Empty range marker for 4..99.
-    assert re.search(
-        r'<div class="step-range" data-start="4" data-end="99">[^<]*\[4-99\][^<]*</div>',
-        html,
-    )
-    # Second merged run `step 100..102`.
-    assert re.search(
-        r'<div class="step-marker"[^>]*data-step="100"[^>]*>\s*step\s+100\.\.102\s*</div>',
-        html,
-    )
+    assert len(lines_with_payload) == 3
+
+
+def test_render_includes_recompute_merges_js(tmp_path: Path) -> None:
+    """The client-side merge function exists in the generated JS."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=[], steps=0)
+    html = render(run_dir).read_text()
+    assert "function recomputeMerges" in html
+    # And it must be called from applyFilters so filter changes recompose merges.
+    assert "recomputeMerges()" in html
+
+
+def test_render_click_handler_jumps_scrubber_to_step(tmp_path: Path) -> None:
+    """Clicking a .line or .step-marker jumps the scrubber to that step."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=[], steps=0)
+    html = render(run_dir).read_text()
+    # Delegated click handler on #log.
+    assert "log.addEventListener('click'" in html
+    # Handler reads a step from the target's data-step and calls setStep.
+    assert "closest('.line, .step-marker, .step-range')" in html
+    assert "setStep(step)" in html

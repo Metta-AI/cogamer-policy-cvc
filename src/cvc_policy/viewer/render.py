@@ -218,8 +218,11 @@ def render(run_dir: Path) -> Path:
 
     # Stable event-to-index map so `data-idx` matches the embedded
     # events JSON across all downstream consumers (scrubber, filters).
+    # Duplicate-merging is deferred to client-side JS so it can recompose
+    # correctly as filters toggle. `_merge_duplicate_steps` remains a pure
+    # tested helper but is no longer called here.
     idx_of = {id(e): i for i, e in enumerate(events)}
-    raw_groups = _merge_duplicate_steps(_group_by_step(events, max_step))
+    raw_groups = _group_by_step(events, max_step)
     log_groups: list[dict[str, Any]] = []
     for g in raw_groups:
         if g["type"] == "range":
@@ -228,7 +231,7 @@ def render(run_dir: Path) -> Path:
             log_groups.append({
                 "type": "step",
                 "step": g["step"],
-                "step_end": g.get("step_end"),
+                "step_end": None,
                 "lines": [_as_line(idx_of[id(e)], e) for e in g["events"]],
             })
 
