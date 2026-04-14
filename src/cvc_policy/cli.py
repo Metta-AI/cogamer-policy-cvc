@@ -125,15 +125,56 @@ def _replace_seed(scenario_obj, seed: int):
 
 
 @app.command("view")
-def view(run_id: str) -> None:
-    """Render an HTML report for a run. Stub until Batch 3."""
-    typer.echo(f"view {run_id}: not yet implemented (Batch 3)")
+def view(
+    run: str = typer.Argument(..., help="Run id (under --runs-root) or path."),
+    runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not launch browser."),
+) -> None:
+    """Render and open the HTML report for a run."""
+    import webbrowser
+
+    from cvc_policy.viewer import render
+
+    candidate = Path(run)
+    if candidate.is_dir():
+        run_dir = candidate
+    else:
+        run_dir = runs_root / run
+    if not run_dir.is_dir():
+        typer.echo(f"no such run: {run_dir}")
+        raise typer.Exit(code=2)
+    out = render(run_dir)
+    typer.echo(f"wrote {out}")
+    if not no_open:
+        webbrowser.open(str(out.resolve()))
 
 
 @app.command("runs")
-def runs() -> None:
-    """List past runs, most recent first. Stub until Batch 3."""
-    typer.echo("runs: not yet implemented (Batch 3)")
+def runs(
+    runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+) -> None:
+    """List past runs, most recent first."""
+    import json as _json
+
+    if not runs_root.is_dir():
+        typer.echo("(no runs)")
+        return
+    entries = [p for p in runs_root.iterdir() if p.is_dir()]
+    entries.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    if not entries:
+        typer.echo("(no runs)")
+        return
+    typer.echo(f"{'run_id':<40} {'scenario':<30} {'status':<10} {'duration':>8}")
+    for p in entries:
+        result_path = p / "result.json"
+        if result_path.exists():
+            r = _json.loads(result_path.read_text())
+            scen = str(r.get("scenario") or "")
+            status = str(r.get("status") or "")
+            dur = float(r.get("duration_s") or 0.0)
+        else:
+            scen, status, dur = "", "(missing)", 0.0
+        typer.echo(f"{p.name:<40} {scen:<30} {status:<10} {dur:>7.2f}s")
 
 
 @app.command("play")

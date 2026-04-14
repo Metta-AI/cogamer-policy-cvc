@@ -20,10 +20,12 @@ def test_scenario_list_runs_without_error() -> None:
     assert result.exit_code == 0
 
 
-def test_view_stub_exits_zero() -> None:
-    result = CliRunner().invoke(app, ["view", "any-run-id"])
-    assert result.exit_code == 0
-    assert "not yet implemented" in result.output.lower()
+def test_view_errors_on_missing_run(tmp_path) -> None:
+    result = CliRunner().invoke(
+        app, ["view", "does-not-exist", "--runs-root", str(tmp_path)]
+    )
+    assert result.exit_code == 2
+    assert "no such run" in result.output.lower()
 
 
 def test_test_cov_stub_exits_zero() -> None:
