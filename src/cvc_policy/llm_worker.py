@@ -15,7 +15,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
-from cvc_policy.logcfg import LogConfig
+from cvc_policy.recorder import EventRecorder
 
 if TYPE_CHECKING:
     from cvc_policy.cogamer_policy import CvCAgentState
@@ -100,12 +100,12 @@ class LLMWorker:
         client: Any,
         agent_id: int,
         state: CvCAgentState,
-        log: LogConfig | None = None,
+        recorder: EventRecorder | None = None,
     ) -> None:
         self._client = client
         self._agent_id = agent_id
         self._state = state
-        self._log = log if log is not None else LogConfig("")
+        self._recorder = recorder if recorder is not None else EventRecorder()
         self._shutdown = threading.Event()
         self._thread = threading.Thread(
             target=self._run,
@@ -167,21 +167,11 @@ class LLMWorker:
                 "rationale": args.get("rationale", ""),
             }
         )
-        rationale = args.get("rationale", "").strip()
-        self._log.log(
-            "llm",
-            f"a{self._agent_id} patch {applied}"
-            + (f" — {rationale[:120]}" if rationale else ""),
-        )
         return {"ok": True, "applied": applied}
 
     def _dispatch_tool(self, name: str, args: dict) -> dict:
         if name == "read_recent_logs":
-            out = self._tool_read_recent_logs(args)
-            self._log.log(
-                "llm", f"a{self._agent_id} read_recent_logs -> {len(out.get('events', []))} events"
-            )
-            return out
+            return self._tool_read_recent_logs(args)
         if name == "patch":
             return self._tool_patch(args)
         return {"error": f"unknown tool: {name}"}

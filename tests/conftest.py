@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from cvc_policy.agent.types import _ELEMENTS, KnownEntity
+from mettagrid.policy.policy_env_interface import PolicyEnvInterface
 from mettagrid.sdk.agent import (
     GridPosition,
     MettagridState,
@@ -16,6 +17,17 @@ from mettagrid.sdk.agent import (
 )
 
 _SENTINEL = object()
+
+
+def _fake_policy_env_info(num_agents: int = 1) -> PolicyEnvInterface:
+    """Minimal PolicyEnvInterface for tests that construct CvCPolicy directly."""
+    return PolicyEnvInterface(
+        action_names=["noop", "move_north", "move_south", "move_east", "move_west"],
+        vibe_action_names=["change_vibe_default"],
+        num_agents=num_agents,
+        observation_shape=(10, 3),
+        egocentric_shape=(5, 5),
+    )
 
 
 def _default_shared_inventory() -> dict[str, int]:
