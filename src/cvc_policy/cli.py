@@ -155,7 +155,7 @@ def view(
         raise typer.Exit(code=2)
     out = render(run_dir)
     typer.echo(f"wrote {out}")
-    if not no_open:
+    if not no_open:  # pragma: no cover - launches a real browser
         webbrowser.open(str(out.resolve()))
 
 
@@ -273,5 +273,5 @@ def test_cov() -> None:
     raise typer.Exit(code=result.returncode)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     app()
