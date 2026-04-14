@@ -197,7 +197,10 @@ def play(
         runs_root = Path(tempfile.mkdtemp(prefix="cgp-play-"))
     run = run_scenario(synthetic, runs_root=runs_root)
     typer.echo(f"manual run: {run.run_dir}")
-    typer.echo(f"steps: {run.result.get('steps')}  duration: {run.result.get('duration_s'):.2f}s")
+    typer.echo(
+        f"steps: {run.result.get('steps')}  "
+        f"duration: {run.result.get('duration_s') or 0.0:.2f}s"
+    )
 
 
 @app.command("test-cov")

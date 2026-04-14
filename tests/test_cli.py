@@ -128,6 +128,31 @@ def test_play_builds_scenario_from_cli_args(tmp_path, monkeypatch) -> None:
     assert s.policy_kwargs == {"log_py": True}
 
 
+def test_play_tolerates_missing_duration_s(tmp_path, monkeypatch) -> None:
+    """Old result.json files (or harness bugs) may lack duration_s;
+    cgp play must not raise TypeError formatting a None."""
+    from cvc_policy.scenarios._run import Run
+    import cvc_policy.cli as cli_mod
+
+    def fake_run_scenario(scenario, **kwargs):
+        run_dir = kwargs["runs_root"] / "nodur-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "events.json").write_text("[]")
+        # result.json is missing duration_s.
+        (run_dir / "result.json").write_text(
+            '{"run_id": "nodur-run", "status": "passed", "assertions": [], "steps": 10}'
+        )
+        return Run(run_dir)
+
+    monkeypatch.setattr(cli_mod, "run_scenario", fake_run_scenario)
+    result = CliRunner().invoke(
+        app,
+        ["play", "-m", "machina_1", "-c", "1", "-s", "10", "--runs-root", str(tmp_path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "duration: 0.00s" in result.output
+
+
 def test_scenario_run_all_tier_filter(tmp_path, monkeypatch) -> None:
     import cvc_policy.scenarios.cases.smoke  # noqa: F401
     import cvc_policy.scenarios.cases.exploration_small  # noqa: F401
