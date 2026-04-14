@@ -264,6 +264,37 @@ Hypothesis property tests for pure helpers: `resource_priority`,
 - **Mettascope panel**: an embedded log panel in MettaScope itself.
   Blocked on upstream plugin API; revisit once that lands.
 
+## 7a. Batch 2 implementation decisions (2026-04-13)
+
+Recorded here so future-us doesn't re-derive the constraints.
+
+**Setup hook is config-level, not live-env.** `run_scenario` calls
+`s.setup(env_cfg)` where `env_cfg` is the `MettaGridConfig` pydantic
+model, before `run_episode_local` instantiates the live grid. The
+C++ grid only exists inside `Rollout.__init__`, so there is no
+reliable pre-rollout hook for live grid-object mutation. Supported
+setup handles: `env_cfg.game.agents[i].inventory.initial[resource]`
+(grant starting inventory), `env_cfg.game.max_steps`, map-builder
+`seed` (determinism), and any other pydantic field on the config.
+Live-grid mutations like "drain a specific extractor" are not
+reachable from here.
+
+**Mission registry is hard-coded.** `_resolve_mission(name, cogs)`
+maps a small known set of strings to factory calls: `machina_1`,
+`tutorial.aligner`, `tutorial.miner`, `tutorial.scrambler`. Unknown
+names raise `KeyError`. No plugin/auto-discovery until we need
+scenarios across many missions.
+
+**S4 `empty_extractor_skipped` reframed from pre-drain to self-drain.**
+The `ExtractorsVariant` config only exposes a global `initial_amount`,
+so "pre-drain a nearby extractor" is not selectable at config level.
+The scenario instead asserts: after the agent self-drains an
+extractor during the rollout, its next `miner` target points to a
+different extractor position. Same behavior under test, reachable
+deterministically via seed=42 without any setup hook. A future
+upstream change exposing per-extractor inventory overrides could
+restore the pre-drain form.
+
 ## 8. Out of scope
 
 - Training or RL. This is diagnostic only.
