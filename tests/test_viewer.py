@@ -532,9 +532,10 @@ def test_render_dense_events_no_step_range(tmp_path: Path) -> None:
     assert m is not None
     log = m.group(1)
     assert 'class="step-range"' not in log
-    # And one .step-marker per step (5 distinct steps).
-    markers = re.findall(r'class="step-marker"', log)
-    assert len(markers) == 5
+    # And one step label per step (5 distinct steps) — data-step-label
+    # attribute on the first line of each step block.
+    labels = re.findall(r'data-step-label="(\d+)"', log)
+    assert len(labels) == 5
 
 
 def test_render_step_range_carries_data_attrs(tmp_path: Path) -> None:
@@ -1122,11 +1123,11 @@ def test_render_emits_one_step_marker_per_step_not_pre_merged(tmp_path: Path) ->
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=9)
     html = render(run_dir).read_text()
 
-    markers = re.findall(
-        r'<div class="step-marker" data-step="(\d+)"',
-        html,
-    )
-    assert [int(m) for m in markers] == list(range(10))
+    # Step labels render via data-step-label on the first line of each
+    # step block (the standalone step-marker div is only kept for
+    # empty-event steps).
+    labels = re.findall(r'data-step-label="(\d+)"', html)
+    assert [int(m) for m in labels] == list(range(10))
 
 
 def test_render_lines_have_data_payload_for_js_merging(tmp_path: Path) -> None:
@@ -1140,8 +1141,9 @@ def test_render_lines_have_data_payload_for_js_merging(tmp_path: Path) -> None:
     assert 'data-payload="' in html
     # Three lines, each with data-payload on the .line element.
     lines_with_payload = re.findall(
-        r'<div class="line"[^>]*data-payload="[^"]*"',
+        r'<div class="line[^"]*"[^>]*data-payload="[^"]*"',
         html,
+        re.DOTALL,
     )
     assert len(lines_with_payload) == 3
 
@@ -1176,9 +1178,14 @@ def test_render_click_handler_jumps_scrubber_to_step(tmp_path: Path) -> None:
 
 
 def _find_line_block(html: str, idx: int) -> str:
-    """Return the substring of a .line div with `data-idx=N`."""
+    """Return the substring of a .line div with `data-idx=N`.
+
+    The first line of each step block carries `step-start` in the class
+    list, so match either `class="line"` or `class="line step-start"`.
+    """
     m = re.search(
-        r'<div class="line" data-idx="' + str(idx) + r'"[^>]*>(.*?)</div>',
+        r'<div class="line[^"]*"\s+data-idx="' + str(idx)
+        + r'"[^>]*>(.*?)</div>',
         html,
         re.DOTALL,
     )

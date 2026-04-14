@@ -96,15 +96,20 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .step-marker.merged-hidden { display: none; }
 #log .step-marker.hidden { display: none; }
 #log hr.step-sep.hr-hidden { display: none; }
-/* Reserve a fixed left column on every .line so merged-range badges
-   align the content column consistently across merged and non-merged
-   rows. Badge is absolutely positioned in that column; it's absent
-   (just empty space) on non-merged lines. */
+/* Reserve a fixed left column on every .line so step labels and
+   range badges both sit in a consistent column. */
 #log .line { padding-left: 66px; position: relative; }
+#log .line.step-start[data-step-label]::before {
+  content: attr(data-step-label);
+  position: absolute; left: 0; top: 2px;
+  width: 58px; color: var(--muted); opacity: 0.55;
+  font-size: 0.85em; letter-spacing: 0.05em;
+  text-transform: uppercase; text-align: right; }
 #log .step-range-badge { position: absolute; left: 0; top: 2px;
   width: 58px; color: var(--muted); opacity: 0.7;
   font-size: 0.85em; font-style: italic; text-align: right;
   margin-right: 0; }
+#log .line.in-merged-run::before { content: none; }
 #log .step-marker { padding-left: 66px; }
 #log .line { cursor: pointer; }
 #log .step-marker { cursor: pointer; }
@@ -123,12 +128,19 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   flex: 1 1 30%; min-width: 200px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .inventory-panel .inv-agent { font-weight: 700; }
-.inventory-panel .inv-role { color: var(--muted); }
-.inventory-panel .inv-hp { color: var(--fg); }
-.inventory-panel .inv-cargo { color: var(--muted); opacity: 0.85; }
-.inventory-panel .inv-row.stale .inv-role,
-.inventory-panel .inv-row.stale .inv-hp,
-.inventory-panel .inv-row.stale .inv-cargo { opacity: 0.4; }
+.inventory-panel .inv-role { display: inline-flex; gap: 2px;
+  align-items: center; }
+.inventory-panel .inv-hp { display: inline-flex; gap: 2px;
+  align-items: center; color: #f87171; }
+.inventory-panel .inv-cargo { display: inline-flex; gap: 4px;
+  align-items: center; }
+.inventory-panel .inv-row.stale { opacity: 0.4; }
+.inventory-panel .inv-row.active { outline: 1px solid var(--accent);
+  border-radius: 4px; }
+.inventory-panel .inv-badge { display: inline-flex; align-items: center;
+  gap: 2px; padding: 1px 4px; border-radius: 3px;
+  background: var(--panel2); cursor: help; font-size: 12px; }
+.inventory-panel .inv-badge .inv-count { font-weight: 600; }
 #log hr.step-sep { border: 0; border-top: 1px solid var(--border);
   margin: 4px 0; height: 0; }
 #log .step-marker { color: var(--muted); font-size: 10px;
@@ -247,14 +259,21 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       {% if g.type == "range" %}
       <div class="step-range" data-start="{{ g.start }}" data-end="{{ g.end }}">[{{ g.start }}-{{ g.end }}]</div>
       {% else %}
-      <div class="step-marker" data-step="{{ g.step }}" data-original="step {{ g.step }}">step {{ g.step }}</div>
+      {# Compact step marker in the left column — vertical layout on the
+         first line of each step rather than a standalone horizontal row. #}
+      {% if g.lines %}
       {% for ln in g.lines %}
-      <div class="line" data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
+      <div class="line{% if loop.first %} step-start{% endif %}"
+           data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
+           {% if loop.first %}data-step-label="{{ g.step }}"{% endif %}
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"
            data-stream="{{ ln.stream }}"
            data-type="{{ ln.type }}"
            data-payload="{{ ln.text }}">{% if ln.agent is not none %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}{% if ln.role and role_glyph(ln.role) %}<span class="role-icon" title="{{ ln.role }}">{{ role_glyph(ln.role) }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
       {% endfor %}
+      {% else %}
+      <div class="step-marker" data-step="{{ g.step }}" data-original="step {{ g.step }}">step {{ g.step }}</div>
+      {% endif %}
       {% endif %}
       {% endfor %}
     </div>
@@ -270,7 +289,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     document.getElementById('inventory-by-agent-step').textContent);
   var maxStep = {{ max_step }};
 
-  // Keys to render in the compact cargo line — keep it tight.
+  // Icons for compact inventory rendering. Hover shows the text name.
+  var INV_ICONS = {
+    hp: "\u2665",            // heart suit (vitality)
+    heart: "\ud83d\udc96",   // sparkling heart (gear)
+    carbon: "\u25cf",        // black circle
+    oxygen: "\u25cb",        // white circle
+    germanium: "\u25c6",     // black diamond
+    silicon: "\u25a0",       // black square
+    miner: "\u26cf",
+    aligner: "\ud83d\udd17",
+    scrambler: "\ud83c\udf00",
+    scout: "\ud83d\udd2d"
+  };
   var INV_CARGO_KEYS = ['carbon', 'oxygen', 'germanium', 'silicon', 'heart'];
 
   function _findLatestHeartbeat(agent, step) {
@@ -289,6 +320,12 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     return entries[best];
   }
 
+  function _invBadge(key, count, label) {
+    var icon = INV_ICONS[key] || key;
+    var text = (label || key) + ': ' + count;
+    return '<span class="inv-badge" title="' + text + '">' + icon +
+           '<span class="inv-count">' + count + '</span></span>';
+  }
   function updateInventoryPanel(step) {
     var panel = document.getElementById('inventory-panel');
     if (!panel) return;
@@ -301,21 +338,29 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       var cargoEl = row.querySelector('.inv-cargo');
       if (!hit) {
         row.classList.add('stale');
-        if (roleEl) roleEl.textContent = '';
-        if (hpEl) hpEl.textContent = '';
-        if (cargoEl) cargoEl.textContent = '';
+        if (roleEl) roleEl.innerHTML = '';
+        if (hpEl) hpEl.innerHTML = '';
+        if (cargoEl) cargoEl.innerHTML = '';
         return;
       }
       row.classList.remove('stale');
       var p = hit.payload || {};
-      if (roleEl) roleEl.textContent = p.role ? ('role=' + p.role) : '';
-      if (hpEl) hpEl.textContent = (p.hp !== undefined) ? ('hp=' + p.hp) : '';
+      if (roleEl) {
+        roleEl.innerHTML = p.role
+          ? '<span class="inv-badge" title="role: ' + p.role + '">' +
+            (INV_ICONS[p.role] || p.role) + '</span>'
+          : '';
+      }
+      if (hpEl) {
+        hpEl.innerHTML = (p.hp !== undefined)
+          ? _invBadge('hp', p.hp, 'hp') : '';
+      }
       var inv = p.inventory || {};
       var parts = [];
       INV_CARGO_KEYS.forEach(function (k) {
-        if (inv[k] !== undefined) parts.push(k + '=' + inv[k]);
+        if (inv[k] !== undefined) parts.push(_invBadge(k, inv[k], k));
       });
-      if (cargoEl) cargoEl.textContent = parts.join(' ');
+      if (cargoEl) cargoEl.innerHTML = parts.join('');
     });
   }
   // Mettascope owns scrubber UI; setStep tracks the step internally so
@@ -338,11 +383,18 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   function setStep(step, agent) {
     step = Math.max(0, Math.min(maxStep, Math.floor(step)));
+    // Always refresh the inventory panel — clicking a different line at
+    // the same step should still highlight that row's agent.
+    updateInventoryPanel(step);
+    if (typeof agent === 'number' && !isNaN(agent)) {
+      document.querySelectorAll('#inventory-panel .inv-row').forEach(
+        function (r) { r.classList.remove('active'); });
+      var row = document.querySelector(
+        '#inventory-panel .inv-row[data-agent="' + agent + '"]');
+      if (row) row.classList.add('active');
+    }
     var sameStep = step === currentStep;
     if (sameStep && agent === undefined) {
-      // Keep the scrubber in sync (cheap) but skip the expensive DOM work
-      // and the mettascope round-trip — otherwise inbound mettascopeStep
-      // messages would echo back out and cause a feedback loop.
       scrub.value = step;
       return;
     }
