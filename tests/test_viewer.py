@@ -172,7 +172,6 @@ def test_render_includes_compact_copy_badge(tmp_path: Path) -> None:
     run_dir = _write_fake_run(tmp_path / "my-run")
     (run_dir / "replay.json.z").write_bytes(b"fake")
     html = render(run_dir).read_text()
-    assert 'class="copy-badge"' in html
     assert 'data-copy="softmax cogames replay ' in html
 
 
@@ -188,6 +187,24 @@ def test_report_replay_copy_badge_uses_absolute_path(tmp_path: Path) -> None:
     assert Path(path_part).is_absolute()
     assert Path(path_part).exists()
     assert "replay.json.z" in path_part
+
+
+def test_report_replay_cmd_is_header_button(tmp_path: Path) -> None:
+    """Replay cmd lives as a compact button inside <header>, not a full-width row."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "my-run")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+    # Old full-width row is gone.
+    assert "replay-cmd-line" not in html
+    # Header contains a .header-copy button with the copy data attribute.
+    m = re.search(r"<header[^>]*>(.*?)</header>", html, re.DOTALL)
+    assert m is not None
+    header = m.group(1)
+    assert "header-copy" in header
+    assert 'data-copy="softmax cogames replay ' in header
+    assert "copy replay cmd" in header
 
 
 def test_render_includes_mettascope_iframe(tmp_path: Path) -> None:

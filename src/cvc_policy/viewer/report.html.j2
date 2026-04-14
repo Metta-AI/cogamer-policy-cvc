@@ -59,12 +59,10 @@ section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
 .replay-card iframe { width: 100%; min-height: 480px; border: 0;
   background: var(--panel2); border-radius: 4px; }
 .replay-fallback { padding: 1em; color: var(--muted); font-size: 0.9em; }
-.replay-cmd-line { font-size: 0.85em; opacity: 0.7; margin-top: 0.5em;
-  display: flex; gap: 0.5em; align-items: center; }
-.replay-cmd-line code { flex: 1; word-break: break-all; }
-.copy-badge { font-size: 0.75em; padding: 1px 6px;
+.copy-btn { font-size: 0.75em; padding: 1px 6px;
   border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
   background: transparent; color: var(--fg); font-family: inherit; }
+.header-copy { margin-left: auto; }
 .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .tabs button { background: var(--panel2); color: var(--fg); border: 0;
   padding: 4px 10px; border-radius: 4px 4px 0 0; cursor: pointer;
@@ -114,6 +112,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   <span class="meta">seed={{ seed }}</span>
   <span class="meta">steps={{ steps }}</span>
   <span class="meta">mission={{ mission }}</span>
+  {% if has_replay %}
+  <button type="button" class="copy-btn header-copy"
+    data-copy="softmax cogames replay {{ replay_abs_path }}"
+    title="softmax cogames replay {{ replay_abs_path }}">copy replay cmd</button>
+  {% endif %}
 </header>
 
 {% if status == "failed" or status == "crashed" %}
@@ -138,11 +141,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     {% if has_replay %}
     <iframe id="mettascope" allowfullscreen></iframe>
     <noscript>JavaScript required for embedded replay.</noscript>
-    <div class="replay-cmd-line">
-      <code>softmax cogames replay {{ replay_abs_path }}</code>
-      <button class="copy-badge" type="button"
-        data-copy="softmax cogames replay {{ replay_abs_path }}">copy</button>
-    </div>
     {% else %}
     <div class="meta">(no replay.json.z found)</div>
     {% endif %}
@@ -334,6 +332,9 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     if (!el) return;
     var text = el.getAttribute('data-copy') || '';
     if (navigator.clipboard) navigator.clipboard.writeText(text);
+    var prev = el.textContent;
+    el.textContent = 'copied';
+    setTimeout(function () { el.textContent = prev; }, 2000);
   });
 
   (function setupReplay() {
