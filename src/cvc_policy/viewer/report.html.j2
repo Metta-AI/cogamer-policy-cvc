@@ -238,10 +238,30 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   var playing = false;
   var timer = null;
 
+  var currentStep = -1;
+  var suppressMettascopePush = false;
+
   function setStep(step) {
     step = Math.max(0, Math.min(maxStep, Math.floor(step)));
+    if (step === currentStep) {
+      // Keep the scrubber in sync (cheap) but skip the expensive DOM work
+      // and the mettascope round-trip — otherwise inbound mettascopeStep
+      // messages would echo back out and cause a feedback loop.
+      scrub.value = step;
+      return;
+    }
+    currentStep = step;
     scrub.value = step;
     stepLabel.textContent = 'step ' + step + ' / ' + maxStep;
+    // Forward to the embedded mettascope unless we were *called* because
+    // mettascope told us to move (suppressMettascopePush guards that).
+    if (!suppressMettascopePush) {
+      var iframe = document.getElementById('mettascope');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(
+          { type: 'mettascopeSetStep', step: step }, '*');
+      }
+    }
     // Highlight current-step log lines.
     log.querySelectorAll('.line').forEach(function (el) {
       if (parseInt(el.dataset.step, 10) === step) el.classList.add('current');
@@ -445,6 +465,20 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     var prev = el.textContent;
     el.textContent = 'copied';
     setTimeout(function () { el.textContent = prev; }, 2000);
+  });
+
+  // Listen for step updates from mettascope so our scrubber follows its
+  // playback. We only trust messages whose source is our own iframe, and
+  // we set suppressMettascopePush so setStep doesn't echo the value back.
+  window.addEventListener('message', function (event) {
+    var iframe = document.getElementById('mettascope');
+    if (!iframe || event.source !== iframe.contentWindow) return;
+    if (!event.data || event.data.type !== 'mettascopeStep') return;
+    var step = event.data.step | 0;
+    if (step === currentStep) return;
+    suppressMettascopePush = true;
+    setStep(step);
+    suppressMettascopePush = false;
   });
 
   (function setupReplay() {

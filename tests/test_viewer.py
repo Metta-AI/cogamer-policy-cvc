@@ -271,6 +271,49 @@ def test_render_iframe_prefers_local_mettascope_on_http(tmp_path: Path) -> None:
     )
 
 
+def test_report_scrubber_pushes_step_to_mettascope_iframe(tmp_path: Path) -> None:
+    """setStep posts mettascopeSetStep to the iframe contentWindow."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+
+    # Post the message type that mettascope listens for, on the iframe's
+    # contentWindow (not window.parent).
+    assert "'mettascopeSetStep'" in html
+    assert "iframe.contentWindow.postMessage" in html
+
+
+def test_report_listens_for_mettascope_step_with_source_check(
+    tmp_path: Path,
+) -> None:
+    """Inbound mettascopeStep handler is wired and verifies event.source."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+
+    # The inbound message type from mettascope.
+    assert "'mettascopeStep'" in html
+    # Must verify the message came from our own iframe, not a random window.
+    assert "event.source !== iframe.contentWindow" in html
+
+
+def test_report_guards_against_mettascope_step_feedback_loop(
+    tmp_path: Path,
+) -> None:
+    """The inbound handler must suppress the outbound push to avoid a loop."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+
+    # A dedicated flag guards the re-entry: setStep reads it to skip the
+    # outbound postMessage, and the inbound handler sets/clears it.
+    assert "suppressMettascopePush" in html
 
 
 def test_render_neutralizes_script_end_in_json_island(tmp_path: Path) -> None:
