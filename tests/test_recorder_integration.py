@@ -15,6 +15,8 @@ from tests.conftest import _fake_policy_env_info
 class _StubEngine:
     def __init__(self) -> None:
         self._llm_objective: str | None = None
+        self._current_target_position: tuple[int, int] | None = None
+        self._current_target_kind: str | None = None
 
 
 class _StubGameState:
@@ -91,3 +93,42 @@ def test_recorder_step_is_set_each_tick():
     impl.step_with_state(object(), state)
     steps = sorted({e["step"] for e in impl._recorder.events})
     assert steps == [1, 2]
+
+
+def _make_impl_with_target(kind: str, pos: tuple[int, int]):
+    impl, state = _make_impl()
+
+    original_step = impl._programs["step"].fn
+
+    def step_with_target(gs):
+        gs.engine._current_target_kind = kind
+        gs.engine._current_target_position = pos
+        return original_step(gs)
+
+    impl._programs["step"].fn = step_with_target
+    return impl, state
+
+
+def test_target_event_when_target_chosen():
+    impl, state = _make_impl_with_target("carbon_extractor", (5, 5))
+    impl.step_with_state(object(), state)
+    targets = [e for e in impl._recorder.events if e["type"] == "target"]
+    assert len(targets) == 1
+    assert targets[0]["payload"]["kind"] == "carbon_extractor"
+    assert targets[0]["payload"]["pos"] == [5, 5]
+
+
+def test_no_target_event_when_no_target():
+    impl, state = _make_impl()
+    impl.step_with_state(object(), state)
+    assert [e for e in impl._recorder.events if e["type"] == "target"] == []
+
+
+def test_heartbeat_every_200_steps():
+    impl, state = _make_impl()
+    for _ in range(400):
+        impl.step_with_state(object(), state)
+    heartbeats = [e for e in impl._recorder.events if e["type"] == "heartbeat"]
+    # Fires at step 200 and 400.
+    assert len(heartbeats) == 2
+    assert {hb["step"] for hb in heartbeats} == {200, 400}

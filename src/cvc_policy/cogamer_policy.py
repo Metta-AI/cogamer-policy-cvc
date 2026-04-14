@@ -144,11 +144,27 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             stream="py",
             payload={"role": gs.role, "summary": summary},
         )
+        target_kind = getattr(gs.engine, "_current_target_kind", None)
+        target_pos = getattr(gs.engine, "_current_target_position", None)
+        if target_kind and target_pos is not None:
+            self._recorder.emit(
+                type="target",
+                agent=self._agent_id,
+                stream="py",
+                payload={"kind": target_kind, "pos": list(target_pos)},
+            )
 
-        # Heartbeat: feed the LLM a periodic snapshot.
-        if state.worker is not None and gs.step_index % _HEARTBEAT_EVERY == 0:
+        # Heartbeat: feed the LLM a periodic snapshot and record it.
+        if gs.step_index > 0 and gs.step_index % _HEARTBEAT_EVERY == 0:
             snapshot = self._invoke_sync("summarize", gs)
-            _log(state.log_queue, {"kind": "heartbeat", **snapshot})
+            self._recorder.emit(
+                type="heartbeat",
+                agent=self._agent_id,
+                stream="py",
+                payload=dict(snapshot),
+            )
+            if state.worker is not None:
+                _log(state.log_queue, {"kind": "heartbeat", **snapshot})
 
         return action, state
 
