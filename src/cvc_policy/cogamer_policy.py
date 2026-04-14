@@ -26,7 +26,7 @@ from typing import Any
 from cvc_policy.game_state import GameState
 from cvc_policy.llm_worker import LLMWorker
 from cvc_policy.programs import all_programs
-from cvc_policy.recorder import EventRecorder
+from cvc_policy.recorder import EventRecorder, fmt
 from mettagrid.policy.policy import MultiAgentPolicy, StatefulAgentPolicy, StatefulPolicyImpl
 from mettagrid.policy.policy_env_interface import PolicyEnvInterface
 from mettagrid.simulator import Action
@@ -76,6 +76,7 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         self._llm_client = llm_client
         self._game_id = game_id
         self._recorder = recorder if recorder is not None else EventRecorder()
+        self._infos: dict[str, Any] = {}
 
     def initial_agent_state(self) -> CvCAgentState:
         gs = GameState(
@@ -165,6 +166,20 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             )
             if state.worker is not None:
                 _log(state.log_queue, {"kind": "heartbeat", **snapshot})
+
+        # Surface this tick's events (for this agent) via policyInfos so
+        # mettagrid persists them in the replay. Also include team/global
+        # events (agent=None) so they appear on every agent's stream.
+        tick_events = [
+            e
+            for e in self._recorder.events_for_step(gs.step_index)
+            if e["agent"] == self._agent_id or e["agent"] is None
+        ]
+        summary_lines = [fmt(e) for e in tick_events]
+        self._infos = {
+            "events": tick_events,
+            "summary": "\n".join(summary_lines),
+        }
 
         return action, state
 
