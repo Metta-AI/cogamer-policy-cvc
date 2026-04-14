@@ -10,6 +10,27 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from cvc_policy.recorder import fmt
 
+
+def _safe_script_json(obj: Any) -> str:
+    """Serialize to JSON and neutralize sequences that would break out
+    of a `<script type="application/json">` island (XSS vector).
+
+    Also escapes any remaining bare `<` as `\\u003c` so arbitrary HTML
+    tags inside JSON strings cannot appear verbatim in the rendered
+    source. All replacements round-trip through `JSON.parse`.
+    """
+    s = json.dumps(obj, ensure_ascii=False)
+    _PLACEHOLDER = "\x00CLOSESLASH\x00"
+    return (
+        s.replace("</", _PLACEHOLDER)
+        .replace("<!--", "\\u003c!\\-\\-")
+        .replace("<![CDATA[", "\\u003c![CDATA\\[")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+        .replace("<", "\\u003c")
+        .replace(_PLACEHOLDER, "<\\/")
+    )
+
 TYPE_COLORS: dict[str, str] = {
     "action": "#cbd5e1",
     "role_change": "#f59e0b",
@@ -115,7 +136,7 @@ def render(run_dir: Path) -> Path:
         "agent_rows": agent_rows,
         "type_counts": _type_counts(events),
         "log_lines": log_lines,
-        "events_json": json.dumps(events),
+        "events_json": _safe_script_json(events),
         "failed": failed,
         "assertions": result.get("assertions", []),
         "has_replay": has_replay,

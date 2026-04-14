@@ -151,6 +151,33 @@ def test_report_replay_card_mentions_replay_file(tmp_path: Path) -> None:
     assert "softmax cogames replay" in html
 
 
+def test_render_neutralizes_script_end_in_json_island(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(
+        tmp_path / "r",
+        events=[
+            {"step": 0, "agent": 0, "stream": "py", "type": "note",
+             "payload": {"text": "oops </script><script>alert(1)</script>"}},
+        ],
+    )
+    html = render(run_dir).read_text()
+    # Extract only the JSON island and assert no `</script>` breaks out.
+    m = re.search(
+        r'<script type="application/json" id="events">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert m is not None
+    island = m.group(1)
+    assert "</script>" not in island
+    # Escaped form should appear inside the island.
+    assert "<\\/script>" in island
+    # And the island JSON must still round-trip to the original payload.
+    parsed = json.loads(island)
+    assert parsed[0]["payload"]["text"] == "oops </script><script>alert(1)</script>"
+
+
 def test_cgp_view_invokes_webbrowser_with_existing_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
