@@ -178,6 +178,38 @@ def test_render_neutralizes_script_end_in_json_island(tmp_path: Path) -> None:
     assert parsed[0]["payload"]["text"] == "oops </script><script>alert(1)</script>"
 
 
+def test_render_escapes_event_text_in_log_panel(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(
+        tmp_path / "r",
+        events=[
+            {"step": 0, "agent": 0, "stream": "py", "type": "note",
+             "payload": {"text": "<img src=x onerror=alert(1)>"}},
+        ],
+    )
+    html = render(run_dir).read_text()
+    assert "<img src=x onerror=alert(1)>" not in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+
+
+def test_render_escapes_assertion_message(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(
+        tmp_path / "r",
+        status="failed",
+        assertions=[
+            {"name": "bad", "passed": False,
+             "message": "<script>alert('x')</script>",
+             "failed_at_step": 3},
+        ],
+    )
+    html = render(run_dir).read_text()
+    assert "<script>alert('x')</script>" not in html
+    assert "&lt;script&gt;alert(" in html
+
+
 def test_cgp_view_invokes_webbrowser_with_existing_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

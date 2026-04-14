@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 
 from cvc_policy.recorder import fmt
 
@@ -50,7 +50,7 @@ def _env() -> Environment:
     tpl_dir = Path(__file__).parent
     return Environment(
         loader=FileSystemLoader(str(tpl_dir)),
-        autoescape=select_autoescape(["html"]),
+        autoescape=True,
     )
 
 
