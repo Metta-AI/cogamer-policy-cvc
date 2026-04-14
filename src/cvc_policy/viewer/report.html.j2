@@ -35,35 +35,27 @@ header .meta { color: var(--muted); }
 .banner-fail button { background: transparent; color: var(--bad);
   border: 1px solid var(--bad); padding: 2px 8px; margin-right: 8px;
   cursor: pointer; font-family: inherit; }
-main { display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: 10px;
+main { display: grid; grid-template-columns: 3fr 2fr; gap: 10px;
   padding: 10px; }
 section { background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 10px; }
 section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.05em; }
-.filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-  padding: 8px 16px; background: var(--panel2); border-bottom: 1px solid var(--border);
-  min-height: 40px; }
-.filter-bar .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.filter-bar .group-label { color: var(--muted); text-transform: uppercase;
+.log-card .log-filters { display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 0; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.log-card .log-filters .row { display: flex; flex-wrap: wrap; gap: 6px;
+  align-items: center; }
+.log-card .log-filters .group-label { color: var(--muted); text-transform: uppercase;
   letter-spacing: 0.05em; font-size: 11px; margin-right: 4px; }
-.filter-bar label.agent-cb { display: inline-flex; align-items: center; gap: 3px;
+.log-card label.agent-cb { display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 6px; border: 1px solid var(--border); border-radius: 3px;
-  background: var(--panel); cursor: pointer; font-size: 12px; }
-.filter-bar input[type="search"] { width: 240px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  background: var(--panel2); cursor: pointer; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--panel2); cursor: pointer; user-select: none;
   display: inline-flex; align-items: center; gap: 6px; }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .chip.off { opacity: 0.4; }
-.timeline-row { display: grid; grid-template-columns: 40px 1fr;
-  align-items: center; gap: 6px; margin-bottom: 4px; }
-.timeline-row label { color: var(--muted); font-size: 12px; }
-svg.timeline { width: 100%; height: 18px; background: var(--panel2);
-  border-radius: 3px; }
-svg.timeline rect.tick { cursor: pointer; }
-svg.timeline line.cursor { stroke: var(--accent); stroke-width: 1; }
 .replay-card iframe { width: 100%; min-height: 480px; border: 0;
   background: var(--panel2); border-radius: 4px; }
 .replay-fallback { padding: 1em; color: var(--muted); font-size: 0.9em; }
@@ -136,56 +128,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 </div>
 {% endif %}
 
-<section class="filter-bar">
-  <div class="group">
-    <span class="group-label">Agents</span>
-    {% for a in agents %}
-    <label class="agent-cb">
-      <input type="checkbox" checked class="agent-toggle" data-agent="{{ a }}">
-      <span style="color: {{ agent_color(a) }}">a{{ a }}</span>
-    </label>
-    {% endfor %}
-  </div>
-  <div class="group">
-    <span class="group-label">Types</span>
-    <div class="chips" id="type-chips">
-      {% for t, n, color in type_counts %}
-      <span class="chip" data-type="{{ t }}">
-        <span class="dot" style="background: {{ color }}"></span>
-        {{ t }} <span class="meta">({{ n }})</span>
-      </span>
-      {% endfor %}
-    </div>
-  </div>
-  <div class="group" style="flex: 1; min-width: 160px;">
-    <span class="group-label">Search</span>
-    <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
-  </div>
-</section>
-
 <main>
-  <section>
-    <h2>Agent timelines</h2>
-    {% for row in agent_rows %}
-    <div class="timeline-row" data-agent="{{ row.agent }}">
-      <label style="color: {{ agent_color(row.agent) }}">a{{ row.agent }}</label>
-      <svg class="timeline" viewBox="0 0 1000 18" preserveAspectRatio="none"
-           data-agent="{{ row.agent }}">
-        {% for t in row.ticks %}
-        <rect class="tick"
-              x="{{ '%.2f'|format(t.x_pct * 10) }}" y="2"
-              width="3" height="14"
-              fill="{{ t.color }}"
-              data-step="{{ t.step }}"
-              data-agent="{{ row.agent }}"
-              data-type="{{ t.type }}"><title>step {{ t.step }} {{ t.type }}</title></rect>
-        {% endfor %}
-        <line class="cursor" x1="0" y1="0" x2="0" y2="18"></line>
-      </svg>
-    </div>
-    {% endfor %}
-  </section>
-
   <section class="replay-card">
     <h2>Replay</h2>
     {% if has_replay %}
@@ -201,8 +144,33 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     {% endif %}
   </section>
 
-  <section>
+  <section class="log-card">
     <h2>Log</h2>
+    <div class="log-filters">
+      <div class="row">
+        <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
+      </div>
+      <div class="row">
+        <span class="group-label">Types</span>
+        <div class="chips" id="type-chips">
+          {% for t, n, color in type_counts %}
+          <span class="chip" data-type="{{ t }}">
+            <span class="dot" style="background: {{ color }}"></span>
+            {{ t }} <span class="meta">({{ n }})</span>
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="row">
+        <span class="group-label">Agents</span>
+        {% for a in agents %}
+        <label class="agent-cb">
+          <input type="checkbox" checked class="agent-toggle" data-agent="{{ a }}">
+          <span style="color: {{ agent_color(a) }}">a{{ a }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
     <div class="tabs" id="tabs">
       <button type="button" class="tab active" data-tab="all">All</button>
       <button type="button" class="tab" data-tab="py">Py</button>
@@ -259,12 +227,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     step = Math.max(0, Math.min(maxStep, Math.floor(step)));
     scrub.value = step;
     stepLabel.textContent = 'step ' + step + ' / ' + maxStep;
-    // Move cursor on each svg.
-    document.querySelectorAll('svg.timeline').forEach(function (svg) {
-      var x = maxStep > 0 ? (step / maxStep) * 1000 : 0;
-      var line = svg.querySelector('line.cursor');
-      if (line) { line.setAttribute('x1', x); line.setAttribute('x2', x); }
-    });
     // Highlight current-step log lines.
     log.querySelectorAll('.line').forEach(function (el) {
       if (parseInt(el.dataset.step, 10) === step) el.classList.add('current');
@@ -308,14 +270,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       if (q && text.indexOf(q) === -1) hide = true;
       el.classList.toggle('hidden', hide);
     });
-    document.querySelectorAll('svg.timeline rect.tick').forEach(function (t) {
-      var hide = !!hiddenTypes[t.dataset.type];
-      t.style.display = hide ? 'none' : '';
-    });
-    document.querySelectorAll('.timeline-row').forEach(function (row) {
-      var a = row.dataset.agent;
-      row.style.display = hiddenAgents[a] ? 'none' : '';
-    });
   }
 
   typeChips.addEventListener('click', function (e) {
@@ -345,10 +299,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   });
 
   search.addEventListener('input', applyFilters);
-
-  document.querySelectorAll('svg.timeline rect.tick').forEach(function (t) {
-    t.addEventListener('click', function () { setStep(+t.dataset.step); });
-  });
 
   document.querySelectorAll('.jump-fail').forEach(function (b) {
     b.addEventListener('click', function () { setStep(+b.dataset.step); });

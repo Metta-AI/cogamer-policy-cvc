@@ -106,23 +106,6 @@ def render(run_dir: Path) -> Path:
     agents = _agent_ids(events, cogs)
     max_step = max((int(e.get("step", 0)) for e in events), default=0)
 
-    # Per-agent timeline rows: list of {agent, ticks: [{step, type, color, x_pct}]}
-    agent_rows: list[dict[str, Any]] = []
-    for a in agents:
-        ticks = []
-        for e in events:
-            if e.get("agent") != a:
-                continue
-            step = int(e.get("step", 0))
-            x_pct = (step / max_step * 100.0) if max_step > 0 else 0.0
-            ticks.append({
-                "step": step,
-                "type": e["type"],
-                "color": TYPE_COLORS.get(e["type"], _DEFAULT_COLOR),
-                "x_pct": x_pct,
-            })
-        agent_rows.append({"agent": a, "ticks": ticks})
-
     # Pre-render log lines for the right-side panel as structured dicts.
     # The template composes the final line with styled spans for stream
     # and agent — `text` is just the payload portion (no [stream]/a<N>
@@ -155,7 +138,6 @@ def render(run_dir: Path) -> Path:
         "steps": result.get("steps", max_step),
         "max_step": max_step,
         "agents": agents,
-        "agent_rows": agent_rows,
         "type_counts": _type_counts(events),
         "log_lines": log_lines,
         "events_json": _safe_script_json(events),

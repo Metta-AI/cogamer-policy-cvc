@@ -78,14 +78,27 @@ def test_report_contains_run_id_and_scenario(tmp_path: Path) -> None:
     assert "my_scenario" in html
 
 
-def test_report_has_one_svg_per_agent(tmp_path: Path) -> None:
+def test_report_has_no_timeline_svgs(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     run_dir = _write_fake_run(tmp_path / "r", cogs=3)
     html = render(run_dir).read_text()
-    # One timeline SVG per agent.
+    # Left-panel timelines are gone; no timeline SVGs in the output.
     svgs = re.findall(r"<svg[^>]*class=\"timeline\"", html)
-    assert len(svgs) == 3
+    assert len(svgs) == 0
+
+
+def test_report_main_has_two_columns(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=3)
+    html = render(run_dir).read_text()
+    # main grid declares exactly two columns.
+    m = re.search(r"main\s*\{[^}]*grid-template-columns:\s*([^;]+);", html)
+    assert m is not None, "main grid-template-columns not found"
+    cols = m.group(1).strip()
+    # Two non-empty tokens means a 2-column grid.
+    assert len([t for t in cols.split() if t]) == 2, f"expected 2 columns, got: {cols}"
 
 
 def test_report_embeds_events_json_blob(tmp_path: Path) -> None:
@@ -268,51 +281,45 @@ def test_render_escapes_assertion_message(tmp_path: Path) -> None:
 
 
 
-def test_report_has_filter_bar_section(tmp_path: Path) -> None:
+def test_report_has_no_standalone_filter_bar(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     run_dir = _write_fake_run(tmp_path / "r", cogs=3)
     html = render(run_dir).read_text()
-    # A dedicated filter bar section exists below the header.
-    assert '<section class="filter-bar"' in html or "class=\"filter-bar\"" in html
+    # The standalone top filter bar is gone; contents moved into the
+    # right (log) panel.
+    assert '<section class="filter-bar"' not in html
 
 
-def test_agent_checkboxes_live_in_filter_bar_not_timeline_row(
-    tmp_path: Path,
-) -> None:
+def test_agent_filters_live_in_log_panel(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     run_dir = _write_fake_run(tmp_path / "r", cogs=3)
     html = render(run_dir).read_text()
-    # Per-agent checkboxes must be inside the filter bar.
+    # Find the log panel section (the one containing #log).
     m = re.search(
-        r'<section class="filter-bar".*?</section>', html, re.DOTALL
+        r'<section[^>]*class="log-card"[^>]*>(.*?)</section>',
+        html,
+        re.DOTALL,
     )
-    assert m is not None
-    bar = m.group(0)
-    # Expect one checkbox per cog.
-    cbs = re.findall(r'class="agent-toggle"', bar)
+    assert m is not None, "log-card section not found"
+    panel = m.group(1)
+    # Exactly one checkbox per cog, all inside the log panel.
+    cbs = re.findall(r'class="agent-toggle"', panel)
     assert len(cbs) == 3
-    # Timeline rows must not contain the checkbox (so unchecking doesn't hide it).
-    rows = re.findall(
-        r'<div class="timeline-row".*?</div>\s*</div>', html, re.DOTALL
-    )
-    for row in rows:
-        assert "agent-toggle" not in row
+    # Search + type chips also in the log panel.
+    assert 'id="search"' in panel
+    assert 'id="type-chips"' in panel
 
 
-def test_filter_bar_contains_search_and_type_chips(tmp_path: Path) -> None:
+def test_agent_checkboxes_total_count_matches_cogs(tmp_path: Path) -> None:
+    """Exactly `cogs` agent checkboxes in the whole report, not duplicated."""
     from cvc_policy.viewer import render
 
-    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    run_dir = _write_fake_run(tmp_path / "r", cogs=4)
     html = render(run_dir).read_text()
-    m = re.search(
-        r'<section class="filter-bar".*?</section>', html, re.DOTALL
-    )
-    assert m is not None
-    bar = m.group(0)
-    assert 'id="search"' in bar
-    assert 'id="type-chips"' in bar
+    cbs = re.findall(r'class="agent-toggle"', html)
+    assert len(cbs) == 4
 
 
 def test_log_has_step_separators_between_distinct_steps(tmp_path: Path) -> None:
