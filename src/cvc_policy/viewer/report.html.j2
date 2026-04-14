@@ -351,9 +351,16 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   }
 
   // Walk the currently-visible step-markers and merge runs of adjacent
-  // markers that each have a single visible line with matching
-  // agent/stream/type/payload. Idempotent: reset state happens in
-  // applyFilters before this runs.
+  // markers whose visible-line *sets* match (same count, same keys).
+  // Step keys formed from sorted line keys so multi-event steps merge
+  // when the whole set repeats. Idempotent — applyFilters resets first.
+  function _stepLineKeys(marker) {
+    return _linesAfterMarker(marker)
+      .filter(function (l) { return !l.classList.contains('hidden'); })
+      .map(_lineKey)
+      .sort()
+      .join(';;');
+  }
   function recomputeMerges() {
     var allMarkers = Array.prototype.slice.call(
       log.querySelectorAll('.step-marker'));
@@ -361,13 +368,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     while (i < allMarkers.length) {
       var marker = allMarkers[i];
       if (marker.classList.contains('hidden')) { i++; continue; }
-      var lines = _linesAfterMarker(marker);
-      var visible = lines.filter(function (l) {
+      var visible = _linesAfterMarker(marker).filter(function (l) {
         return !l.classList.contains('hidden');
       });
-      if (visible.length !== 1) { i++; continue; }
-      var firstLine = visible[0];
-      var key = _lineKey(firstLine);
+      if (visible.length === 0) { i++; continue; }
+      var key = _stepLineKeys(marker);
       var step = parseInt(marker.dataset.step, 10);
       var runEnd = step;
       var runMarkers = [];
@@ -378,22 +383,20 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         if (m2.classList.contains('hidden')) { j++; continue; }
         var step2 = parseInt(m2.dataset.step, 10);
         if (step2 !== runEnd + 1) break;
-        var lines2 = _linesAfterMarker(m2);
-        var visible2 = lines2.filter(function (l) {
-          return !l.classList.contains('hidden');
-        });
-        if (visible2.length !== 1) break;
-        if (_lineKey(visible2[0]) !== key) break;
+        if (_stepLineKeys(m2) !== key) break;
         runEnd = step2;
         runMarkers.push(m2);
-        runLines.push(visible2[0]);
+        _linesAfterMarker(m2).forEach(function (l) {
+          if (!l.classList.contains('hidden')) runLines.push(l);
+        });
         j++;
       }
       if (runMarkers.length > 0) {
-        // Hide the start step-marker too — the range is shown inline on
-        // the kept line as a compact `[a..b]` badge so the merge
-        // collapses to ONE visible line, not a header + line pair.
+        // Hide the start step-marker; prepend a `[a..b]` badge to the
+        // first kept visible line so the merge collapses to a compact
+        // run with the range inline on its first row.
         marker.classList.add('merged-hidden');
+        var firstLine = visible[0];
         var badge = firstLine.querySelector('.step-range-badge');
         if (!badge) {
           badge = document.createElement('span');
