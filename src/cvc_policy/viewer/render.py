@@ -267,13 +267,13 @@ def render(run_dir: Path) -> Path:
                 "lines": [_as_line(idx_of[id(e)], e) for e in g["events"]],
             })
 
-    # Pre-compute heartbeat snapshots per agent for the inventory panel.
-    # `inventory_by_agent_step` maps str(agent_id) -> sorted list of
-    # {"step": int, "payload": dict}. JSON object keys are strings so the
-    # client can `inventoryByAgentStep[String(a)]` directly.
+    # Pre-compute inventory snapshots per agent for the inventory panel.
+    # Any event whose payload carries `inventory` or `hp` contributes
+    # (action events fire every tick; heartbeats add role/team_resources).
     inventory_by_agent_step: dict[str, list[dict[str, Any]]] = {}
     for e in events:
-        if e.get("type") != "heartbeat":
+        payload = e.get("payload") or {}
+        if not ("inventory" in payload or "hp" in payload):
             continue
         a = e.get("agent")
         if a is None:
@@ -281,7 +281,7 @@ def render(run_dir: Path) -> Path:
         key = str(int(a))
         inventory_by_agent_step.setdefault(key, []).append({
             "step": int(e.get("step", 0)),
-            "payload": dict(e.get("payload") or {}),
+            "payload": dict(payload),
         })
     for entries in inventory_by_agent_step.values():
         entries.sort(key=lambda r: r["step"])

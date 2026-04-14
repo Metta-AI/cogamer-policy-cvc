@@ -96,8 +96,11 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .step-marker.merged-hidden { display: none; }
 #log .step-marker.hidden { display: none; }
 #log hr.step-sep.hr-hidden { display: none; }
-#log .step-range-badge { color: var(--muted); margin-right: 6px;
-  opacity: 0.7; font-size: 0.85em; font-style: italic; }
+#log .line.in-merged-run { padding-left: 66px; position: relative; }
+#log .step-range-badge { position: absolute; left: 0; top: 2px;
+  width: 58px; color: var(--muted); opacity: 0.7;
+  font-size: 0.85em; font-style: italic; text-align: right;
+  margin-right: 0; }
 #log .line { cursor: pointer; }
 #log .step-marker { cursor: pointer; }
 #log .line .meta { color: var(--muted); }
@@ -384,6 +387,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     });
     log.querySelectorAll('.line').forEach(function (el) {
       el.classList.remove('merged-hidden');
+      el.classList.remove('in-merged-run');
       var type = el.dataset.type;
       var agent = el.dataset.agent;
       var stream = el.dataset.stream;
@@ -468,18 +472,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         j++;
       }
       if (runMarkers.length > 0) {
-        // Hide the start step-marker; prepend a `[a..b]` badge to the
-        // first kept visible line so the merge collapses to a compact
-        // run with the range inline on its first row.
+        // Hide the start step-marker; show the range as a left-margin
+        // badge on the first visible line, and indent all visible lines
+        // of the run so the range column lines up horizontally.
         marker.classList.add('merged-hidden');
         var firstLine = visible[0];
+        visible.forEach(function (l) { l.classList.add('in-merged-run'); });
         var badge = firstLine.querySelector('.step-range-badge');
         if (!badge) {
           badge = document.createElement('span');
           badge.className = 'step-range-badge';
           firstLine.insertBefore(badge, firstLine.firstChild);
         }
-        badge.textContent = '[' + step + '..' + runEnd + '] ';
+        badge.textContent = '[' + step + '..' + runEnd + ']';
         runMarkers.forEach(function (m) { m.classList.add('merged-hidden'); });
         runLines.forEach(function (l) { l.classList.add('merged-hidden'); });
       } else {

@@ -140,11 +140,24 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
 
         action, summary = self._invoke_sync("step", gs)
         gs.finalize_step(summary)
+        inventory: dict[str, int] = {}
+        hp_val: int = 0
+        mg_state = getattr(gs, "mg_state", None)
+        if mg_state is not None:
+            inventory = dict(mg_state.self_state.inventory)
+            hp_val = int(inventory.get("hp", 0))
+        payload: dict[str, Any] = {"role": gs.role, "summary": summary}
+        if inventory:
+            payload["inventory"] = inventory
+            payload["hp"] = hp_val
+        pos = getattr(gs, "position", None)
+        if pos is not None:
+            payload["pos"] = list(pos)
         self._recorder.emit(
             type="action",
             agent=self._agent_id,
             stream="py",
-            payload={"role": gs.role, "summary": summary},
+            payload=payload,
         )
         target_kind = getattr(gs.engine, "_current_target_kind", None)
         target_pos = getattr(gs.engine, "_current_target_position", None)
@@ -177,10 +190,21 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             if e["agent"] == self._agent_id or e["agent"] is None
         ]
         summary_lines = [fmt(e) for e in tick_events]
-        self._infos = {
+        infos: dict[str, Any] = {
             "events": tick_events,
             "summary": "\n".join(summary_lines),
+            "role": gs.role,
+            "summary_action": summary,
         }
+        # Mettascope reads policy_info.target as a relative [row, col] offset
+        # from the agent's position and highlights that cell on the map.
+        agent_pos_for_target = getattr(gs, "position", None)
+        if target_kind and target_pos is not None and agent_pos_for_target is not None:
+            dx = int(target_pos[0]) - int(agent_pos_for_target[0])
+            dy = int(target_pos[1]) - int(agent_pos_for_target[1])
+            infos["target"] = [dy, dx]
+            infos["target_kind"] = target_kind
+        self._infos = infos
 
         return action, state
 
