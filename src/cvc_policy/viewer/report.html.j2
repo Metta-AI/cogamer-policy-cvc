@@ -831,22 +831,37 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       try { if (window.localStorage) localStorage.setItem('cgp-cols', cols); }
       catch (e) {}
     }
+    function _endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      if (e && typeof e.pointerId === 'number') {
+        try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
     handle.addEventListener('pointerdown', function (e) {
+      if (e.button !== undefined && e.button !== 0) return;
       dragging = true;
       handle.classList.add('dragging');
-      handle.setPointerCapture(e.pointerId);
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
       startX = e.clientX;
       startLeftPx = grid.firstElementChild.getBoundingClientRect().width;
+      e.preventDefault();
     });
     handle.addEventListener('pointermove', function (e) {
       if (!dragging) return;
+      // Only follow when the primary button is still pressed. Prevents
+      // "ghost" moves when pointerup fired outside the element and we
+      // missed the end-of-drag signal.
+      if (e.buttons === 0) { _endDrag(e); return; }
       _setCols(startLeftPx + (e.clientX - startX));
     });
-    handle.addEventListener('pointerup', function (e) {
-      dragging = false;
-      handle.classList.remove('dragging');
-      try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
-    });
+    handle.addEventListener('pointerup', _endDrag);
+    handle.addEventListener('pointercancel', _endDrag);
+    handle.addEventListener('lostpointercapture', _endDrag);
+    // Safety net: any mouseup anywhere on the window cleanly ends a drag.
+    window.addEventListener('mouseup', _endDrag);
+    window.addEventListener('blur', _endDrag);
   })();
 
   applyFilters();
