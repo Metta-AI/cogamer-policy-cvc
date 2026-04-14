@@ -140,6 +140,16 @@ def view(
         run_dir = candidate
     else:
         run_dir = runs_root / run
+        # Reject path traversal: the resolved run_dir must sit under
+        # the resolved runs_root.
+        resolved = run_dir.resolve()
+        root_resolved = runs_root.resolve()
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            raise typer.BadParameter(
+                f"invalid run id (path traversal outside {runs_root}): {run}"
+            )
     if not run_dir.is_dir():
         typer.echo(f"no such run: {run_dir}")
         raise typer.Exit(code=2)

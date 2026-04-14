@@ -226,6 +226,26 @@ def test_report_replay_kbd_is_absolute_path(tmp_path: Path) -> None:
     assert "replay.json.z" in path_part
 
 
+def test_cgp_view_rejects_path_traversal(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from cvc_policy.cli import app
+
+    runs_root = tmp_path / "runs"
+    runs_root.mkdir()
+    # Sibling directory the attacker is trying to escape into.
+    (tmp_path / "escape").mkdir()
+
+    result = CliRunner().invoke(
+        app, ["view", "../escape", "--runs-root", str(runs_root)]
+    )
+    assert result.exit_code != 0
+    combined = (result.output or "") + (
+        str(result.exception) if result.exception else ""
+    )
+    assert "traversal" in combined.lower() or "outside" in combined.lower()
+
+
 def test_cgp_view_invokes_webbrowser_with_existing_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
