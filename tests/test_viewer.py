@@ -184,12 +184,25 @@ def test_render_includes_mettascope_iframe(tmp_path: Path) -> None:
     (run_dir / "replay.json.z").write_bytes(b"fake")
     html = render(run_dir).read_text()
     assert '<iframe id="mettascope"' in html
-    # JS builds the mettascope URL at runtime.
-    assert (
-        "https://metta-ai.github.io/metta/mettascope/mettascope.html?replay="
-        in html
-    )
+    # JS prefers the locally-served mettascope path (fixes mixed-content).
+    assert "./mettascope/mettascope.html" in html
+    # Github-pages URL is still present as fallback.
+    assert "https://metta-ai.github.io/metta/mettascope/mettascope.html" in html
     assert "./replay.json.z" in html
+
+
+def test_render_iframe_prefers_local_mettascope_on_http(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+    # The inline JS constructs a ./mettascope/mettascope.html URL (same
+    # origin as the run folder), not jumping straight to the github URL.
+    # Ensure the local path appears before the remote fallback in source.
+    assert html.find("./mettascope/mettascope.html") < html.find(
+        "https://metta-ai.github.io/metta/mettascope/mettascope.html"
+    )
 
 
 
@@ -486,6 +499,71 @@ def test_cgp_view_with_server_starts_http_server(
     url = opened[0]
     m = _re.match(r"^http://localhost:(\d+)/report\.html$", url)
     assert m is not None, f"unexpected url: {url}"
+
+
+def test_serve_run_mounts_mettascope_dist_when_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET /mettascope/mettascope.html returns 200 when dist is found."""
+    import urllib.request
+
+    from cvc_policy import cli as cli_mod
+    from cvc_policy.viewer import render
+
+    runs_root = tmp_path / "runs"
+    run_dir = _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
+    render(run_dir)
+
+    # Fake a mettascope dist with the required marker file.
+    fake_dist = tmp_path / "fake-dist"
+    fake_dist.mkdir()
+    (fake_dist / "mettascope.html").write_text(
+        "<!doctype html><title>fake</title>"
+    )
+    monkeypatch.setattr(cli_mod, "_mettascope_dist", lambda: fake_dist)
+
+    httpd, port = cli_mod._serve_run(run_dir)
+    try:
+        with urllib.request.urlopen(
+            f"http://localhost:{port}/mettascope/mettascope.html", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            body = resp.read().decode("utf-8")
+            assert "fake" in body
+            # COOP/COEP headers emitted for SharedArrayBuffer support.
+            assert resp.headers.get("Cross-Origin-Opener-Policy") == "same-origin"
+            assert resp.headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_serve_run_still_serves_run_dir_when_mettascope_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no dist, run-dir paths still serve and COOP/COEP headers present."""
+    import urllib.request
+
+    from cvc_policy import cli as cli_mod
+    from cvc_policy.viewer import render
+
+    runs_root = tmp_path / "runs"
+    run_dir = _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
+    render(run_dir)
+
+    monkeypatch.setattr(cli_mod, "_mettascope_dist", lambda: None)
+
+    httpd, port = cli_mod._serve_run(run_dir)
+    try:
+        with urllib.request.urlopen(
+            f"http://localhost:{port}/report.html", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert resp.headers.get("Cross-Origin-Opener-Policy") == "same-origin"
+            assert resp.headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 def test_serve_run_helper_actually_serves_report(tmp_path: Path) -> None:

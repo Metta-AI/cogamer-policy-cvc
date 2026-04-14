@@ -124,21 +124,78 @@ def _replace_seed(scenario_obj, seed: int):
     return dataclasses.replace(scenario_obj, seed=seed)
 
 
+def _mettascope_dist() -> Path | None:
+    """Locate the mettagrid-bundled mettascope dist directory.
+
+    Returns None if mettagrid is not importable or if none of the
+    expected dist layouts contain `mettascope.html`.
+    """
+    import mettagrid
+
+    root = Path(mettagrid.__file__).resolve().parent
+    candidates = (
+        root / "nim" / "mettascope" / "dist",
+        root.parent.parent.parent / "packages" / "mettagrid" / "nim" / "mettascope" / "dist",
+    )
+    for candidate in candidates:
+        if (candidate / "mettascope.html").exists():
+            return candidate
+    return None
+
+
+def _make_run_handler(run_dir: Path, mettascope_dist: Path | None):
+    """Build a SimpleHTTPRequestHandler that serves two roots:
+
+    - ``/mettascope/*`` from the mettascope dist (if provided)
+    - everything else from ``run_dir``
+
+    Always emits COOP + COEP headers required for SharedArrayBuffer
+    (mettascope).
+    """
+    import http.server
+
+    run_dir_str = str(Path(run_dir).resolve())
+    dist_str = str(mettascope_dist.resolve()) if mettascope_dist else None
+
+    class _Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            # translate_path uses self.directory; pick dynamically below.
+            super().__init__(*args, directory=run_dir_str, **kwargs)
+
+        def translate_path(self, path: str) -> str:
+            if dist_str is not None and path.startswith("/mettascope/"):
+                # Strip "/mettascope" and resolve against dist dir.
+                self.directory = dist_str
+                rewritten = path[len("/mettascope") :] or "/"
+                try:
+                    return super().translate_path(rewritten)
+                finally:
+                    self.directory = run_dir_str
+            self.directory = run_dir_str
+            return super().translate_path(path)
+
+        def end_headers(self) -> None:
+            self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+            self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
+            super().end_headers()
+
+    return _Handler
+
+
 def _serve_run(run_dir: Path):
     """Start a ThreadingHTTPServer serving `run_dir` on an OS-picked port.
 
     Returns `(httpd, port)`. Caller is responsible for `httpd.shutdown()`
     and `httpd.server_close()`. The serving thread is a daemon so it
     won't keep the process alive on its own.
+
+    If the mettascope dist is locatable, `/mettascope/*` is mounted on
+    the same origin so the embedded iframe avoids mixed-content errors.
     """
-    import functools
     import http.server
     import threading
 
-    directory = str(Path(run_dir).resolve())
-    handler_cls = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=directory
-    )
+    handler_cls = _make_run_handler(run_dir, _mettascope_dist())
     httpd = http.server.ThreadingHTTPServer(("localhost", 0), handler_cls)
     port = httpd.server_address[1]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -197,13 +254,16 @@ def view(
     # Start the server directly on this thread (blocking) so Ctrl-C
     # aborts cleanly. Tests patch `serve_forever` to raise
     # KeyboardInterrupt, so the block below unwinds immediately.
-    import functools
     import http.server
 
-    directory = str(run_dir.resolve())
-    handler_cls = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=directory
-    )
+    dist = _mettascope_dist()
+    if dist is None:
+        typer.echo(
+            "warning: mettascope dist not found; embedded replay will fall"
+            " back to the public github-pages URL (mixed content may block"
+            " it in browsers)."
+        )
+    handler_cls = _make_run_handler(run_dir, dist)
     httpd = http.server.ThreadingHTTPServer(("localhost", 0), handler_cls)
     port = httpd.server_address[1]
     url = f"http://localhost:{port}/report.html"

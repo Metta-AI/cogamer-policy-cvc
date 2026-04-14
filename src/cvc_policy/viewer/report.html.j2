@@ -368,8 +368,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     var proto = window.location.protocol;
     if (proto === 'http:' || proto === 'https:') {
       var replayUrl = new URL('./replay.json.z', window.location.href).href;
-      var base = 'https://metta-ai.github.io/metta/mettascope/mettascope.html?replay=';
-      iframe.src = base + encodeURIComponent(replayUrl);
+      // Probe the locally-served mettascope dist; fall back to the
+      // github-pages URL if the server didn't mount it (mixed content
+      // may block it in browsers in that case).
+      var localBase = new URL('./mettascope/mettascope.html', window.location.href).href;
+      var remoteBase = 'https://metta-ai.github.io/metta/mettascope/mettascope.html';
+      fetch('./mettascope/mettascope.html', {method: 'HEAD'}).then(function (r) {
+        var base = r.ok ? localBase : remoteBase;
+        iframe.src = base + '?replay=' + encodeURIComponent(replayUrl);
+      }).catch(function () {
+        iframe.src = remoteBase + '?replay=' + encodeURIComponent(replayUrl);
+      });
     } else {
       iframe.outerHTML = '<div class="replay-fallback">Open via <code>cgp view</code> for embedded replay (needs HTTP server).</div>';
     }
