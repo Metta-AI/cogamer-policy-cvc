@@ -1,0 +1,181 @@
+"""`run_scenario` — drive a Scenario through the mettagrid rollout path.
+
+Builds a MettaGridConfig from the mission registry, applies
+mission/variant overrides and the scenario's config-level setup hook,
+then invokes `mettagrid.runner.rollout.run_episode_local` with a
+PolicySpec for CvCPolicy. The policy's `record_dir` kwarg writes
+events.json on episode end; we add result.json.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from mettagrid.policy.policy import PolicySpec
+from mettagrid.runner.rollout import run_episode_local
+
+from cvc_policy.scenarios import Scenario
+from cvc_policy.scenarios._run import Run
+
+
+# Hard-coded mission registry. Fails loud on unknown names; see
+# docs/plans/2026-04-15-diagnostic-framework-design.md §7a for rationale.
+_KNOWN_MISSIONS: dict[str, str] = {
+    "machina_1": "machina_1",
+    "tutorial.aligner": "aligner",
+    "tutorial.miner": "miner",
+    "tutorial.scrambler": "scrambler",
+    "tutorial.scout": "scout",
+}
+
+# CvCPolicy kwargs we pass through to PolicySpec.init_kwargs. Validated
+# in the harness so typos fail at scenario-construction time instead of
+# deep inside the runner.
+_ALLOWED_POLICY_KWARGS: frozenset[str] = frozenset(
+    {"device", "programs", "log", "log_py", "log_llm", "game_id", "record_dir"}
+)
+
+
+def resolve_mission(name: str, *, cogs: int | None = None) -> Any:
+    """Build a mission object from a registry name.
+
+    `machina_1` → `make_machina1_mission(num_agents=cogs or default)`.
+    `tutorial.<role>` → `make_tutorial_mission().with_variants([role])`.
+    """
+    if name == "machina_1":
+        from cogames.games.cogs_vs_clips.missions.machina_1 import make_machina1_mission
+
+        if cogs is not None:
+            return make_machina1_mission(num_agents=cogs)
+        return make_machina1_mission()
+    if name.startswith("tutorial."):
+        role = name.split(".", 1)[1]
+        if role not in ("aligner", "miner", "scrambler", "scout"):
+            raise KeyError(f"unknown tutorial sub-mission: {role}")
+        from cogames.games.cogs_vs_clips.missions.tutorial import make_tutorial_mission
+
+        mission = make_tutorial_mission()
+        if cogs is not None:
+            mission = mission.model_copy(update={"num_agents": cogs, "num_cogs": cogs})
+        return mission.with_variants([role])
+    raise KeyError(f"unknown mission: {name!r}")
+
+
+def _validate_policy_kwargs(policy_kwargs: dict[str, Any]) -> None:
+    bad = [k for k in policy_kwargs if k not in _ALLOWED_POLICY_KWARGS]
+    if bad:
+        raise ValueError(
+            f"unknown CvCPolicy kwarg(s): {sorted(bad)}. "
+            f"Allowed: {sorted(_ALLOWED_POLICY_KWARGS)}"
+        )
+
+
+def _make_run_id(scenario_name: str) -> str:
+    return f"{scenario_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+
+def _write_result_json(
+    run_dir: Path,
+    scenario: Scenario,
+    assertion_results: list[Any],
+    *,
+    started_at: str,
+    duration_s: float,
+    steps: int,
+    status: str,
+) -> None:
+    body = {
+        "run_id": run_dir.name,
+        "scenario": scenario.name,
+        "started_at": started_at,
+        "duration_s": duration_s,
+        "steps": steps,
+        "cogs": scenario.cogs,
+        "mission": scenario.mission,
+        "variants": list(scenario.variants),
+        "seed": scenario.seed,
+        "policy_kwargs": dict(scenario.policy_kwargs),
+        "status": status,
+        "assertions": [dataclasses.asdict(r) for r in assertion_results],
+    }
+    (run_dir / "result.json").write_text(json.dumps(body, indent=2))
+
+
+def run_scenario(
+    scenario: Scenario,
+    *,
+    steps_override: int | None = None,
+    runs_root: Path | None = None,
+    skip_assertions: bool = False,
+) -> Run:
+    """Run a scenario and return the Run view."""
+    _validate_policy_kwargs(scenario.policy_kwargs)
+    runs_root = Path(runs_root) if runs_root is not None else Path("runs")
+    run_id = _make_run_id(scenario.name)
+    run_dir = runs_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build + configure the mission.
+    mission = resolve_mission(scenario.mission, cogs=scenario.cogs)
+    if scenario.variants:
+        mission = mission.with_variants(list(scenario.variants))
+    if scenario.mission_overrides:
+        mission = mission.model_copy(update=scenario.mission_overrides)
+    for vname, patches in scenario.variant_overrides.items():
+        variant = mission._base_variants[vname]
+        for k, v in patches.items():
+            setattr(variant, k, v)
+
+    # Materialize env config and apply setup hook (config-level).
+    env_cfg = mission.make_env()
+    steps = steps_override if steps_override is not None else scenario.steps
+    env_cfg.game.max_steps = steps
+    if scenario.setup is not None:
+        scenario.setup(env_cfg)
+
+    # Run one episode via the mettagrid library driver.
+    spec = PolicySpec(
+        class_path="cvc_policy.cogamer_policy.CvCPolicy",
+        init_kwargs={"record_dir": str(run_dir), **scenario.policy_kwargs},
+    )
+    assignments = [0] * env_cfg.game.num_agents
+    started_at = datetime.now(timezone.utc).isoformat()
+    t0 = time.time()
+    result, _replay = run_episode_local(
+        policy_specs=[spec],
+        assignments=assignments,
+        env=env_cfg,
+        replay_path=run_dir / "replay.json.z",
+        seed=scenario.seed,
+    )
+    duration_s = time.time() - t0
+
+    # Load Run, evaluate assertions.
+    run = Run(run_dir)
+    assertion_results: list[Any] = []
+    status = "passed"
+    if not skip_assertions:
+        for assertion in scenario.assertions:
+            ar = assertion(run)
+            assertion_results.append(ar)
+            if not ar.passed:
+                status = "failed"
+    _write_result_json(
+        run_dir,
+        scenario,
+        assertion_results,
+        started_at=started_at,
+        duration_s=duration_s,
+        steps=result.steps,
+        status=status,
+    )
+    # Re-load Run so callers see the freshly-written result.json.
+    return Run(run_dir)
+
+
+__all__ = ["run_scenario", "resolve_mission"]
