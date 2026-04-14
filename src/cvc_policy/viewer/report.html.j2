@@ -409,21 +409,37 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       }
       i = j;
     }
-    // Hide hr separators between elements that are both hidden, so the
-    // log doesn't show stacked empty rules between merged-hidden runs
-    // or filter-hidden chunks.
-    var hrs = log.querySelectorAll('hr.step-sep');
-    hrs.forEach(function (hr) {
-      function _isVisible(el) {
-        return el && !el.classList.contains('hidden')
-            && !el.classList.contains('merged-hidden');
+    // Keep exactly ONE hr between two visible blocks. Walk the log in
+    // DOM order, tracking whether we've seen visible content since the
+    // last kept hr. Skip hidden/merged-hidden children. A run of hrs
+    // between two visible blocks collapses to the first; leading/
+    // trailing hrs (no visible content on one side yet) hide.
+    var children = Array.prototype.slice.call(log.children);
+    var lastHadContent = false;  // visible non-hr content since last hr kept
+    var pendingHr = null;        // hr waiting to be kept once content follows
+    children.forEach(function (el) {
+      if (el.classList.contains('hidden') ||
+          el.classList.contains('merged-hidden')) {
+        return;  // treat as if absent
       }
-      var prev = hr.previousElementSibling;
-      var next = hr.nextElementSibling;
-      if (!_isVisible(prev) || !_isVisible(next)) {
-        hr.classList.add('hr-hidden');
+      if (el.tagName === 'HR') {
+        if (lastHadContent) {
+          // Keep the most recent hr across a run; collapse any prior
+          // pendingHr (not yet flanked by content on both sides).
+          if (pendingHr) pendingHr.classList.add('hr-hidden');
+          pendingHr = el;
+          lastHadContent = false;
+        } else {
+          el.classList.add('hr-hidden');
+        }
+      } else {
+        // Visible content: the pending hr is now confirmed-visible.
+        pendingHr = null;
+        lastHadContent = true;
       }
     });
+    // Trailing pending hr has no content after it — hide it.
+    if (pendingHr) pendingHr.classList.add('hr-hidden');
   }
 
   // Clicking a log line, step marker, or empty-range jumps the scrubber.
