@@ -306,6 +306,8 @@ class CvCPolicy(MultiAgentPolicy):
     def _on_episode_end(self) -> None:
         self._stop_workers()
         self._write_trace()
+        if self._record_dir:
+            self._recorder.flush_json(Path(self._record_dir) / "events.json")
 
     def _write_trace(self) -> None:
         """Write LLM↔Python communication trace to disk for analysis."""

@@ -33,3 +33,24 @@ def test_cvc_policy_log_all_enables_both(capsys):
     p._recorder.emit(type="note", agent=None, stream="llm", payload={})
     err = capsys.readouterr().err
     assert "[py]" in err and "[llm]" in err
+
+
+def test_record_dir_writes_events_json_on_episode_end(tmp_path):
+    import json
+
+    p = CvCPolicy(_fake_policy_env_info(), record_dir=str(tmp_path))
+    p._recorder.emit(type="note", agent=None, stream="py", payload={"text": "x"})
+    p._on_episode_end()
+    events_path = tmp_path / "events.json"
+    assert events_path.exists()
+    data = json.loads(events_path.read_text())
+    assert len(data) == 1
+    assert data[0]["type"] == "note"
+
+
+def test_no_record_dir_no_events_json(tmp_path):
+    # Without record_dir, no events.json is written even if we call _on_episode_end.
+    p = CvCPolicy(_fake_policy_env_info())
+    p._recorder.emit(type="note", agent=None, stream="py", payload={})
+    p._on_episode_end()
+    assert not (tmp_path / "events.json").exists()
