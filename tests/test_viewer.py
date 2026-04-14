@@ -322,6 +322,139 @@ def test_agent_checkboxes_total_count_matches_cogs(tmp_path: Path) -> None:
     assert len(cbs) == 4
 
 
+def test_group_by_step_dense_has_no_ranges() -> None:
+    """Every step has ≥ 1 event: no range groups."""
+    from cvc_policy.viewer.render import _group_by_step
+
+    events = [
+        {"step": 0, "type": "a"},
+        {"step": 1, "type": "b"},
+        {"step": 2, "type": "c"},
+    ]
+    groups = _group_by_step(events, max_step=2)
+    assert all(g["type"] == "step" for g in groups)
+    assert len(groups) == 3
+
+
+def test_group_by_step_collapses_multi_empty_gap() -> None:
+    """A gap of ≥ 2 consecutive empty steps becomes one range group."""
+    from cvc_policy.viewer.render import _group_by_step
+
+    # events at steps 12, 13, and 200. Everything in 14..199 is empty.
+    events = [
+        {"step": 12, "type": "a"},
+        {"step": 13, "type": "b"},
+        {"step": 200, "type": "c"},
+    ]
+    groups = _group_by_step(events, max_step=200)
+    # First must be a range [0-11] (12 empty steps before first event).
+    assert groups[0] == {"type": "range", "start": 0, "end": 11}
+    # step 12 and step 13 are populated.
+    assert groups[1]["type"] == "step" and groups[1]["step"] == 12
+    assert groups[2]["type"] == "step" and groups[2]["step"] == 13
+    # Then [14-199] range.
+    assert groups[3] == {"type": "range", "start": 14, "end": 199}
+    # Then step 200.
+    assert groups[4]["type"] == "step" and groups[4]["step"] == 200
+
+
+def test_group_by_step_single_gap_not_collapsed() -> None:
+    """A single empty step stays as a step group (no range)."""
+    from cvc_policy.viewer.render import _group_by_step
+
+    events = [
+        {"step": 0, "type": "a"},
+        {"step": 2, "type": "b"},  # step 1 is a single empty step
+    ]
+    groups = _group_by_step(events, max_step=2)
+    # step 0 event, then step 1 empty (as a bare step marker), then step 2.
+    # Requirement: "Single-step gaps: emit `step N` (no range)."
+    assert groups[0]["type"] == "step" and groups[0]["step"] == 0
+    assert groups[1]["type"] == "step" and groups[1]["step"] == 1
+    assert groups[1]["events"] == []
+    assert groups[2]["type"] == "step" and groups[2]["step"] == 2
+
+
+def test_group_by_step_no_events_single_range() -> None:
+    """No events: one range [0-max_step] spanning the whole run."""
+    from cvc_policy.viewer.render import _group_by_step
+
+    groups = _group_by_step([], max_step=99)
+    assert groups == [{"type": "range", "start": 0, "end": 99}]
+
+
+def test_group_by_step_events_on_step_zero() -> None:
+    from cvc_policy.viewer.render import _group_by_step
+
+    events = [{"step": 0, "type": "a"}, {"step": 0, "type": "b"}]
+    groups = _group_by_step(events, max_step=0)
+    assert len(groups) == 1
+    assert groups[0]["type"] == "step"
+    assert groups[0]["step"] == 0
+    assert len(groups[0]["events"]) == 2
+
+
+def test_group_by_step_trailing_empty_range() -> None:
+    """Empty tail past the last event still produces a range marker."""
+    from cvc_policy.viewer.render import _group_by_step
+
+    events = [{"step": 0, "type": "a"}]
+    groups = _group_by_step(events, max_step=10)
+    assert groups[0]["type"] == "step" and groups[0]["step"] == 0
+    # steps 1..10 all empty → one range [1-10].
+    assert groups[-1] == {"type": "range", "start": 1, "end": 10}
+
+
+def test_render_sparse_events_emit_step_range(tmp_path: Path) -> None:
+    """HTML has step-range divs for empty gaps ≥ 2 steps."""
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 0, "agent": 0, "stream": "py", "type": "action", "payload": {}},
+        {"step": 100, "agent": 0, "stream": "py", "type": "action", "payload": {}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=100)
+    html = render(run_dir).read_text()
+    # At least one range marker for the 1..99 gap.
+    assert re.search(
+        r'<div class="step-range" data-start="1" data-end="99">[^<]*\[1-99\][^<]*</div>',
+        html,
+    ), f"missing step-range marker; got: {html[html.find('step-range')-200 if 'step-range' in html else 0:]}"
+
+
+def test_render_dense_events_no_step_range(tmp_path: Path) -> None:
+    """Every step has events: zero step-range elements."""
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": i, "agent": 0, "stream": "py", "type": "action", "payload": {}}
+        for i in range(5)
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=4)
+    html = render(run_dir).read_text()
+    m = re.search(r'<div id="log">(.*?)</div>\s*</section>', html, re.DOTALL)
+    assert m is not None
+    log = m.group(1)
+    assert 'class="step-range"' not in log
+    # And one .step-marker per step (5 distinct steps).
+    markers = re.findall(r'class="step-marker"', log)
+    assert len(markers) == 5
+
+
+def test_render_step_range_carries_data_attrs(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 5, "agent": 0, "stream": "py", "type": "action", "payload": {}},
+        {"step": 20, "agent": 0, "stream": "py", "type": "action", "payload": {}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=20)
+    html = render(run_dir).read_text()
+    # Gap 0..4 and 6..19.
+    assert 'data-start="0"' in html and 'data-end="4"' in html
+    assert 'data-start="6"' in html and 'data-end="19"' in html
+
+
 def test_log_has_step_separators_between_distinct_steps(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 

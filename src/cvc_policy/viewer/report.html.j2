@@ -91,6 +91,10 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   margin: 4px 0; }
 #log .step-marker { color: var(--muted); font-size: 10px;
   text-transform: uppercase; letter-spacing: 0.05em; padding: 0 4px; }
+#log .step-range { color: var(--muted); font-size: 10px; opacity: 0.5;
+  letter-spacing: 0.05em; padding: 0 4px; cursor: pointer;
+  font-style: italic; }
+#log .step-range.current { opacity: 1; color: var(--accent); }
 footer { position: sticky; bottom: 0; background: var(--panel);
   border-top: 1px solid var(--border); padding: 8px 16px;
   display: flex; gap: 10px; align-items: center; }
@@ -178,15 +182,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       <button type="button" class="tab" data-tab="team">Team</button>
     </div>
     <div id="log">
-      {% for ln in log_lines %}
-      {% if loop.changed(ln.step) %}
-      <hr class="step-sep">
-      <div class="step-marker">step {{ ln.step }}</div>
-      {% endif %}
+      {% for g in log_groups %}
+      {% if not loop.first %}<hr class="step-sep">{% endif %}
+      {% if g.type == "range" %}
+      <div class="step-range" data-start="{{ g.start }}" data-end="{{ g.end }}">[{{ g.start }}-{{ g.end }}]</div>
+      {% else %}
+      <div class="step-marker" data-step="{{ g.step }}">step {{ g.step }}</div>
+      {% for ln in g.lines %}
       <div class="line" data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"
            data-stream="{{ ln.stream }}"
            data-type="{{ ln.type }}"><span class="stream stream-{{ ln.stream }}">{{ ln.stream }}</span>{% if ln.agent is not none %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
+      {% endfor %}
+      {% endif %}
       {% endfor %}
     </div>
   </section>
@@ -232,8 +240,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       if (parseInt(el.dataset.step, 10) === step) el.classList.add('current');
       else el.classList.remove('current');
     });
-    // Scroll first current line into view.
-    var firstCurrent = log.querySelector('.line.current');
+    // Highlight the range marker if step falls inside it.
+    log.querySelectorAll('.step-range').forEach(function (el) {
+      var a = parseInt(el.dataset.start, 10);
+      var b = parseInt(el.dataset.end, 10);
+      if (step >= a && step <= b) el.classList.add('current');
+      else el.classList.remove('current');
+    });
+    // Scroll first current line into view (or the current range marker
+    // if we're inside an empty gap).
+    var firstCurrent = log.querySelector('.line.current')
+      || log.querySelector('.step-range.current');
     if (firstCurrent) firstCurrent.scrollIntoView({block: 'nearest'});
   }
 
@@ -302,6 +319,13 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   document.querySelectorAll('.jump-fail').forEach(function (b) {
     b.addEventListener('click', function () { setStep(+b.dataset.step); });
+  });
+
+  // Clicking a collapsed empty-range marker jumps to its start step.
+  log.addEventListener('click', function (e) {
+    var r = e.target.closest('.step-range');
+    if (!r) return;
+    setStep(+r.dataset.start);
   });
 
   // Delegated copy handler for any element with data-copy.

@@ -80,6 +80,47 @@ def _type_counts(events: list[dict[str, Any]]) -> list[tuple[str, int, str]]:
     return [(t, n, TYPE_COLORS.get(t, _DEFAULT_COLOR)) for t, n in out]
 
 
+def _group_by_step(
+    events: list[dict[str, Any]], max_step: int
+) -> list[dict[str, Any]]:
+    """Group events into display groups for the log panel.
+
+    Each group is one of:
+      - {"type": "step", "step": N, "events": [...]} for a step that has
+        at least one event, or for a single empty step sandwiched between
+        populated steps.
+      - {"type": "range", "start": A, "end": B} for a contiguous run of
+        **two or more** consecutive empty steps, A < B.
+
+    Groups cover every step in `0..max_step` inclusive, so a run with no
+    events produces exactly one `range` group `[0, max_step]`.
+    """
+    by_step: dict[int, list[dict[str, Any]]] = {}
+    for e in events:
+        s = int(e.get("step", 0))
+        by_step.setdefault(s, []).append(e)
+
+    groups: list[dict[str, Any]] = []
+    i = 0
+    while i <= max_step:
+        if i in by_step:
+            groups.append({"type": "step", "step": i, "events": by_step[i]})
+            i += 1
+            continue
+        # Empty-step run starts at i; walk forward while empty.
+        j = i
+        while j <= max_step and j not in by_step:
+            j += 1
+        run_len = j - i  # number of empty steps
+        if run_len >= 2:
+            groups.append({"type": "range", "start": i, "end": j - 1})
+        else:
+            # Single empty step — keep it as a bare step marker.
+            groups.append({"type": "step", "step": i, "events": []})
+        i = j
+    return groups
+
+
 def _agent_ids(events: list[dict[str, Any]], cogs: int) -> list[int]:
     seen = {e["agent"] for e in events if e.get("agent") is not None}
     ids = sorted(int(a) for a in seen)
@@ -109,18 +150,31 @@ def render(run_dir: Path) -> Path:
     # Pre-render log lines for the right-side panel as structured dicts.
     # The template composes the final line with styled spans for stream
     # and agent — `text` is just the payload portion (no [stream]/a<N>
-    # prefix). Step separators are inserted by the template using
-    # `loop.changed(ln.step)`.
-    log_lines = []
-    for i, e in enumerate(events):
-        log_lines.append({
-            "idx": i,
+    # prefix).
+    def _as_line(idx: int, e: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "idx": idx,
             "step": int(e.get("step", 0)),
             "agent": e.get("agent"),
             "stream": e.get("stream", ""),
             "type": e["type"],
             "text": payload_text(e),
-        })
+        }
+
+    # Stable event-to-index map so `data-idx` matches the embedded
+    # events JSON across all downstream consumers (scrubber, filters).
+    idx_of = {id(e): i for i, e in enumerate(events)}
+    raw_groups = _group_by_step(events, max_step)
+    log_groups: list[dict[str, Any]] = []
+    for g in raw_groups:
+        if g["type"] == "range":
+            log_groups.append(g)
+        else:
+            log_groups.append({
+                "type": "step",
+                "step": g["step"],
+                "lines": [_as_line(idx_of[id(e)], e) for e in g["events"]],
+            })
 
     failed = [a for a in result.get("assertions", []) if not a.get("passed")]
     status = result.get("status", "unknown")
@@ -139,7 +193,7 @@ def render(run_dir: Path) -> Path:
         "max_step": max_step,
         "agents": agents,
         "type_counts": _type_counts(events),
-        "log_lines": log_lines,
+        "log_groups": log_groups,
         "events_json": _safe_script_json(events),
         "failed": failed,
         "assertions": result.get("assertions", []),
