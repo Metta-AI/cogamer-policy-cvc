@@ -66,6 +66,7 @@ class Run:
                 continue
             if e["type"] == "target":
                 kind = e["payload"].get("kind", "")
+                pos = tuple(e["payload"].get("pos", []))
                 if "extractor" not in kind:
                     # non-mining target closes any open trip
                     if current is not None:
@@ -73,6 +74,12 @@ class Run:
                         current = None
                         bumps = 0
                         last_bump_step = None
+                    continue
+                cur_pos = (
+                    tuple(current["payload"].get("pos", [])) if current is not None else None
+                )
+                if current is not None and pos == cur_pos:
+                    # Same target re-asserted; ongoing trip, ignore.
                     continue
                 if current is not None:
                     trips.append(_finalize_trip(current, bumps, last_bump_step))

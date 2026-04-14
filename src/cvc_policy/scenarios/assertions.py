@@ -109,11 +109,13 @@ def no_target_at(pos: tuple[int, int]) -> Callable[[Run], AssertResult]:
 
 
 def mining_trips_efficient(
-    *, agent: int, extract_amount: int, cap: int
+    *, agent: int, max_bumps_per_trip: int
 ) -> Callable[[Run], AssertResult]:
-    """After first cap_discovered, every full mining trip should contain
-    exactly cap / extract_amount bumps (no plateau waste)."""
-    expected = cap // extract_amount
+    """After the first cap_discovered, no mining trip should bump the
+    target more than `max_bumps_per_trip` times. The cap+extract_amount
+    math determines this bound; we pass it in rather than infer it
+    from the event stream because extract amounts vary by resource.
+    """
 
     def _check(run: Run) -> AssertResult:
         discs = [
@@ -137,21 +139,20 @@ def mining_trips_efficient(
                 message="no mining trips after cap_discovered",
             )
         for t in post:
-            # Only score trips that the agent finished (bump_count > 0).
-            # The final trip in the run may be truncated; skip trips whose
-            # bump count is less than expected (incomplete), only fail on
-            # *over*-bumping.
-            if t.bump_count > expected:
+            if t.bump_count > max_bumps_per_trip:
                 return AssertResult(
                     name="mining_trips_efficient",
                     passed=False,
-                    message=f"trip at step {t.start_step} had {t.bump_count} bumps, expected {expected}",
+                    message=(
+                        f"trip at step {t.start_step} had {t.bump_count} bumps, "
+                        f"max allowed {max_bumps_per_trip}"
+                    ),
                     failed_at_step=t.end_step,
                 )
         return AssertResult(
             name="mining_trips_efficient",
             passed=True,
-            message=f"{len(post)} trips, expected {expected} bumps each",
+            message=f"{len(post)} trips, max {max_bumps_per_trip} bumps each",
         )
 
     return _check

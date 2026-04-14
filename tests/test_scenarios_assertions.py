@@ -163,7 +163,7 @@ def test_mining_trips_efficient_passes(tmp_path: Path) -> None:
         ],
     ]
     run = _make_run(tmp_path, events)
-    r = mining_trips_efficient(agent=0, extract_amount=10, cap=40)(run)
+    r = mining_trips_efficient(agent=0, max_bumps_per_trip=4)(run)
     assert r.passed
 
 
@@ -195,7 +195,7 @@ def test_mining_trips_efficient_fails_on_wasted_bumps(tmp_path: Path) -> None:
         ],
     ]
     run = _make_run(tmp_path, events)
-    r = mining_trips_efficient(agent=0, extract_amount=10, cap=40)(run)
+    r = mining_trips_efficient(agent=0, max_bumps_per_trip=4)(run)
     assert not r.passed
 
 
