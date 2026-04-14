@@ -121,7 +121,7 @@ class LLMWorker:
         # Wake a blocked read_recent_logs by pushing a sentinel.
         try:
             self._state.log_queue.put_nowait({"__shutdown__": True})
-        except queue.Full:
+        except queue.Full:  # pragma: no cover - defensive on bounded queue race
             pass
         self._thread.join(timeout=timeout)
 

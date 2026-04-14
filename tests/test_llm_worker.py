@@ -118,6 +118,105 @@ def test_trim_history_never_starts_with_assistant():
         assert trimmed[1]["role"] == "user"
 
 
+def test_read_recent_logs_returns_queued_events():
+    """Exercise the queue-draining path with a real log_queue."""
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    state.log_queue.put({"type": "action", "step": 1})
+    state.log_queue.put({"type": "action", "step": 2})
+    worker = LLMWorker(client, agent_id=0, state=state)
+    out = worker._tool_read_recent_logs({"max_events": 10})
+    assert len(out["events"]) == 2
+    assert out["events"][0]["step"] == 1
+
+
+def test_read_recent_logs_empty_queue():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    worker = LLMWorker(client, agent_id=0, state=state)
+    from cvc_policy import llm_worker as lw
+    orig = lw._READ_TIMEOUT_S
+    lw._READ_TIMEOUT_S = 0.01
+    try:
+        out = worker._tool_read_recent_logs({})
+    finally:
+        lw._READ_TIMEOUT_S = orig
+    assert out == {"events": []}
+
+
+def test_read_recent_logs_shutdown_first():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    state.log_queue.put({"__shutdown__": True})
+    worker = LLMWorker(client, agent_id=0, state=state)
+    out = worker._tool_read_recent_logs({})
+    assert out == {"shutdown": True, "events": []}
+
+
+def test_read_recent_logs_shutdown_mid_batch():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    state.log_queue.put({"type": "action"})
+    state.log_queue.put({"__shutdown__": True})
+    worker = LLMWorker(client, agent_id=0, state=state)
+    out = worker._tool_read_recent_logs({"max_events": 10})
+    assert out["shutdown"] is True
+    assert len(out["events"]) == 1
+
+
+def test_patch_tool_role_and_objective():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    worker = LLMWorker(client, agent_id=0, state=state)
+    out = worker._tool_patch(
+        {"role": "scrambler", "objective": "expand", "rationale": "push"}
+    )
+    assert out["ok"] is True
+    assert out["applied"]["role"] == "scrambler"
+    assert out["applied"]["objective"] == "expand"
+    assert state.llm_role_override == "scrambler"
+    assert state.llm_objective == "expand"
+
+
+def test_dispatch_unknown_tool():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    worker = LLMWorker(client, agent_id=0, state=state)
+    out = worker._dispatch_tool("nope", {})
+    assert "error" in out
+
+
+def test_step_once_handles_shutdown_via_tool():
+    client = FakeAnthropicClient()
+    # Tool_use triggers read_recent_logs; queue has shutdown sentinel already.
+    client.queue_tool_use("read_recent_logs", {})
+    state = CvCAgentState()
+    state.log_queue.put({"__shutdown__": True})
+    worker = LLMWorker(client, agent_id=0, state=state)
+    # single step, shutdown=True comes back in tool result; loop continues in
+    # production, but _step_once should still record that shutdown was seen
+    worker._step_once()
+
+
+def test_stop_joins_thread_with_shutdown_signal():
+    client = FakeAnthropicClient()
+    client.queue_end_turn()
+    state = CvCAgentState()
+    worker = LLMWorker(client, agent_id=0, state=state)
+    worker.start()
+    worker.stop(timeout=2.0)
+    assert worker._shutdown.is_set()
+
+
+def test_trim_history_short_messages_unchanged():
+    client = FakeAnthropicClient()
+    state = CvCAgentState()
+    worker = LLMWorker(client, agent_id=0, state=state)
+    msgs = [{"role": "user", "content": "g"}, {"role": "assistant", "content": "a"}]
+    out = worker._trim_history(msgs)
+    assert out == msgs
+
+
 def test_patch_tool_emits_patch_applied_event():
     client = FakeAnthropicClient()
     client.queue_tool_use(
