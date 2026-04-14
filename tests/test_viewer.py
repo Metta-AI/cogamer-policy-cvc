@@ -1270,3 +1270,99 @@ def test_unknown_role_is_ignored(tmp_path: Path) -> None:
     assert "role-icon" not in block
 
 
+# ---------------------------------------------------------------------------
+# Feature 2: Current-inventory panel
+# ---------------------------------------------------------------------------
+
+
+def test_inventory_panel_exists_with_one_row_per_agent(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=3)
+    html = render(run_dir).read_text()
+    assert 'id="inventory-panel"' in html
+    rows = re.findall(r'<div class="inv-row"[^>]*data-agent="(\d+)"', html)
+    assert sorted(int(a) for a in rows) == [0, 1, 2]
+
+
+def test_inventory_panel_uses_agent_color(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+    from cvc_policy.viewer.render import agent_color
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    html = render(run_dir).read_text()
+    # Agent tag inside inv-row uses the per-agent color.
+    m = re.search(
+        r'<div class="inv-row"[^>]*data-agent="0">(.*?)</div>',
+        html,
+        re.DOTALL,
+    )
+    assert m is not None
+    row = m.group(0)
+    assert agent_color(0) in row
+    assert "a0" in row
+
+
+def test_inventory_panel_emits_heartbeat_lookup_table(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 200, "agent": 0, "stream": "py", "type": "heartbeat",
+         "payload": {"hp": 90, "role": "miner",
+                     "inventory": {"carbon": 4, "oxygen": 2},
+                     "team_resources": {}}},
+        {"step": 400, "agent": 0, "stream": "py", "type": "heartbeat",
+         "payload": {"hp": 75, "role": "aligner",
+                     "inventory": {"carbon": 1, "oxygen": 3},
+                     "team_resources": {}}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    # A precomputed lookup table is emitted as a script island.
+    assert 'id="inventory-by-agent-step"' in html
+    m = re.search(
+        r'<script type="application/json" id="inventory-by-agent-step">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert m is not None
+    data = json.loads(m.group(1))
+    assert "0" in data
+    entries = data["0"]
+    assert len(entries) == 2
+    steps = [e["step"] for e in entries]
+    assert steps == sorted(steps)
+    assert entries[0]["payload"]["hp"] == 90
+
+
+def test_inventory_panel_sits_above_log(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    html = render(run_dir).read_text()
+    # Panel precedes the #log div.
+    assert html.find('id="inventory-panel"') < html.find('id="log"')
+
+
+def test_inventory_panel_has_css_class(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    html = render(run_dir).read_text()
+    # A css rule for .inventory-panel (or #inventory-panel) exists.
+    assert "inventory-panel" in html
+    # Panel row subelements present in template.
+    assert "inv-agent" in html
+    assert "inv-role" in html
+    assert "inv-hp" in html
+    assert "inv-cargo" in html
+
+
+def test_inventory_panel_js_updates_on_set_step(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    html = render(run_dir).read_text()
+    # JS reads the lookup table and wires into setStep.
+    assert "inventoryByAgentStep" in html
+    assert "updateInventoryPanel" in html

@@ -108,6 +108,19 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   font-size: 10px; font-weight: 600; margin-right: 4px; vertical-align: middle; }
 #log .type { color: var(--muted); margin-right: 4px; }
 #log .role-icon { margin-right: 4px; font-size: 0.9em; }
+.inventory-panel { display: flex; flex-wrap: wrap; gap: 4px 10px;
+  padding: 6px 4px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--border); font-size: 12px; }
+.inventory-panel .inv-row { display: flex; align-items: center; gap: 6px;
+  flex: 1 1 30%; min-width: 200px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inventory-panel .inv-agent { font-weight: 700; }
+.inventory-panel .inv-role { color: var(--muted); }
+.inventory-panel .inv-hp { color: var(--fg); }
+.inventory-panel .inv-cargo { color: var(--muted); opacity: 0.85; }
+.inventory-panel .inv-row.stale .inv-role,
+.inventory-panel .inv-row.stale .inv-hp,
+.inventory-panel .inv-row.stale .inv-cargo { opacity: 0.4; }
 #log hr.step-sep { border: 0; border-top: 1px solid var(--border);
   margin: 4px 0; height: 0; }
 #log .step-marker { color: var(--muted); font-size: 10px;
@@ -210,6 +223,16 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         </div>
       </div>
     </div>
+    <div id="inventory-panel" class="inventory-panel">
+      {% for a in agents %}
+      <div class="inv-row" data-agent="{{ a }}">
+        <span class="inv-agent" style="color: {{ agent_color(a) }}">a{{ a }}</span>
+        <span class="inv-role"></span>
+        <span class="inv-hp"></span>
+        <span class="inv-cargo"></span>
+      </div>
+      {% endfor %}
+    </div>
     <div id="log">
       {% for g in log_groups %}
       {% if not loop.first %}<hr class="step-sep">{% endif %}
@@ -231,10 +254,60 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 </main>
 
 <script type="application/json" id="events">{{ events_json|safe }}</script>
+<script type="application/json" id="inventory-by-agent-step">{{ inventory_by_agent_step_json|safe }}</script>
 <script>
 (function () {
   var events = JSON.parse(document.getElementById('events').textContent);
+  var inventoryByAgentStep = JSON.parse(
+    document.getElementById('inventory-by-agent-step').textContent);
   var maxStep = {{ max_step }};
+
+  // Keys to render in the compact cargo line — keep it tight.
+  var INV_CARGO_KEYS = ['carbon', 'oxygen', 'germanium', 'silicon', 'heart'];
+
+  function _findLatestHeartbeat(agent, step) {
+    var entries = inventoryByAgentStep[String(agent)];
+    if (!entries || entries.length === 0) return null;
+    // Binary search for the largest entries[i].step <= step.
+    var lo = 0, hi = entries.length - 1, best = -1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (entries[mid].step <= step) { best = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    if (best < 0) return null;
+    return entries[best];
+  }
+
+  function updateInventoryPanel(step) {
+    var panel = document.getElementById('inventory-panel');
+    if (!panel) return;
+    var rows = panel.querySelectorAll('.inv-row');
+    rows.forEach(function (row) {
+      var agent = parseInt(row.dataset.agent, 10);
+      var hit = _findLatestHeartbeat(agent, step);
+      var roleEl = row.querySelector('.inv-role');
+      var hpEl = row.querySelector('.inv-hp');
+      var cargoEl = row.querySelector('.inv-cargo');
+      if (!hit) {
+        row.classList.add('stale');
+        if (roleEl) roleEl.textContent = '';
+        if (hpEl) hpEl.textContent = '';
+        if (cargoEl) cargoEl.textContent = '';
+        return;
+      }
+      row.classList.remove('stale');
+      var p = hit.payload || {};
+      if (roleEl) roleEl.textContent = p.role ? ('role=' + p.role) : '';
+      if (hpEl) hpEl.textContent = (p.hp !== undefined) ? ('hp=' + p.hp) : '';
+      var inv = p.inventory || {};
+      var parts = [];
+      INV_CARGO_KEYS.forEach(function (k) {
+        if (inv[k] !== undefined) parts.push(k + '=' + inv[k]);
+      });
+      if (cargoEl) cargoEl.textContent = parts.join(' ');
+    });
+  }
   // Mettascope owns scrubber UI; setStep tracks the step internally so
   // log highlighting + click-to-jump still work, but no on-page scrubber.
   var scrub = { value: 0 };
@@ -292,6 +365,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     var firstCurrent = log.querySelector('.line.current')
       || log.querySelector('.step-range.current');
     if (firstCurrent) firstCurrent.scrollIntoView({block: 'nearest'});
+    updateInventoryPanel(step);
   }
 
   function applyFilters() {

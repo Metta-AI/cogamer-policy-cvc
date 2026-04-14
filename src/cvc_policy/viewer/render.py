@@ -267,6 +267,25 @@ def render(run_dir: Path) -> Path:
                 "lines": [_as_line(idx_of[id(e)], e) for e in g["events"]],
             })
 
+    # Pre-compute heartbeat snapshots per agent for the inventory panel.
+    # `inventory_by_agent_step` maps str(agent_id) -> sorted list of
+    # {"step": int, "payload": dict}. JSON object keys are strings so the
+    # client can `inventoryByAgentStep[String(a)]` directly.
+    inventory_by_agent_step: dict[str, list[dict[str, Any]]] = {}
+    for e in events:
+        if e.get("type") != "heartbeat":
+            continue
+        a = e.get("agent")
+        if a is None:
+            continue
+        key = str(int(a))
+        inventory_by_agent_step.setdefault(key, []).append({
+            "step": int(e.get("step", 0)),
+            "payload": dict(e.get("payload") or {}),
+        })
+    for entries in inventory_by_agent_step.values():
+        entries.sort(key=lambda r: r["step"])
+
     failed = [a for a in result.get("assertions", []) if not a.get("passed")]
     status = result.get("status", "unknown")
     has_replay = (run_dir / "replay.json.z").exists()
@@ -286,6 +305,9 @@ def render(run_dir: Path) -> Path:
         "type_counts": _type_counts(events),
         "log_groups": log_groups,
         "events_json": _safe_script_json(events),
+        "inventory_by_agent_step_json": _safe_script_json(
+            inventory_by_agent_step
+        ),
         "failed": failed,
         "assertions": result.get("assertions", []),
         "has_replay": has_replay,
