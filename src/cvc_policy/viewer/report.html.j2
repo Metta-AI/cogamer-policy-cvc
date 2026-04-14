@@ -249,9 +249,10 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   var currentStep = -1;
   var suppressMettascopePush = false;
 
-  function setStep(step) {
+  function setStep(step, agent) {
     step = Math.max(0, Math.min(maxStep, Math.floor(step)));
-    if (step === currentStep) {
+    var sameStep = step === currentStep;
+    if (sameStep && agent === undefined) {
       // Keep the scrubber in sync (cheap) but skip the expensive DOM work
       // and the mettascope round-trip — otherwise inbound mettascopeStep
       // messages would echo back out and cause a feedback loop.
@@ -263,11 +264,13 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     stepLabel.textContent = 'step ' + step + ' / ' + maxStep;
     // Forward to the embedded mettascope unless we were *called* because
     // mettascope told us to move (suppressMettascopePush guards that).
+    // Optional `agent` selects + centers on that agent in mettascope.
     if (!suppressMettascopePush) {
       var iframe = document.getElementById('mettascope');
       if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage(
-          { type: 'mettascopeSetStep', step: step }, '*');
+        var msg = { type: 'mettascopeSetStep', step: step };
+        if (typeof agent === 'number' && !isNaN(agent)) msg.agent = agent;
+        iframe.contentWindow.postMessage(msg, '*');
       }
     }
     // Highlight current-step log lines.
@@ -423,6 +426,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   }
 
   // Clicking a log line, step marker, or empty-range jumps the scrubber.
+  // For a .line click, also pass the agent so mettascope centers on it.
   log.addEventListener('click', function (e) {
     var target = e.target.closest('.line, .step-marker, .step-range');
     if (!target || !log.contains(target)) return;
@@ -432,8 +436,12 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     } else {
       step = parseInt(target.dataset.step, 10);
     }
-    if (!isNaN(step)) {
-      scrub.value = step;
+    if (isNaN(step)) return;
+    scrub.value = step;
+    var agentAttr = target.dataset.agent;
+    if (agentAttr !== undefined && agentAttr !== '') {
+      setStep(step, parseInt(agentAttr, 10));
+    } else {
       setStep(step);
     }
   });
