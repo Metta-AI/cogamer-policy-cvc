@@ -11,6 +11,7 @@ from cvc_policy.scenarios.assertions import (
     after_heavy_trip_switches_target,
     cap_discovered_by,
     has_action_event_per_agent,
+    known_entities_at_least,
     mining_trips_efficient,
     no_crash,
     no_target_at,
@@ -292,4 +293,82 @@ def test_after_heavy_trip_switches_target_fails(tmp_path: Path) -> None:
     ]
     run = _make_run(tmp_path, events)
     r = after_heavy_trip_switches_target(agent=0, heavy_threshold=25)(run)
+    assert not r.passed
+
+
+# --- Extra coverage paths -------------------------------------------
+
+
+def test_cap_discovered_by_no_matching_events(tmp_path: Path) -> None:
+    run = _make_run(tmp_path, [])
+    r = cap_discovered_by(agent=0, gear_sig=("miner",), expected_cap=4, by_step=100)(run)
+    assert not r.passed
+    assert "no cap_discovered" in r.message
+
+
+def test_cap_discovered_by_wrong_agent_or_sig(tmp_path: Path) -> None:
+    events = [
+        {"step": 5, "agent": 1, "stream": "py", "type": "cap_discovered",
+         "payload": {"gear_sig": ["miner"], "cap": 4}},
+        {"step": 6, "agent": 0, "stream": "py", "type": "cap_discovered",
+         "payload": {"gear_sig": ["scout"], "cap": 4}},
+    ]
+    run = _make_run(tmp_path, events)
+    r = cap_discovered_by(agent=0, gear_sig=("miner",), expected_cap=4, by_step=100)(run)
+    assert not r.passed
+
+
+def test_cap_discovered_by_cap_mismatch(tmp_path: Path) -> None:
+    events = [
+        {"step": 5, "agent": 0, "stream": "py", "type": "cap_discovered",
+         "payload": {"gear_sig": ["miner"], "cap": 7}},
+    ]
+    run = _make_run(tmp_path, events)
+    r = cap_discovered_by(agent=0, gear_sig=("miner",), expected_cap=4, by_step=100)(run)
+    assert not r.passed
+    assert "cap mismatch" in r.message
+
+
+def test_mining_trips_efficient_no_discovery(tmp_path: Path) -> None:
+    run = _make_run(tmp_path, [])
+    r = mining_trips_efficient(agent=0, max_bumps_per_trip=3)(run)
+    assert not r.passed
+    assert "no cap_discovered" in r.message
+
+
+def test_mining_trips_efficient_no_post_trips(tmp_path: Path) -> None:
+    events = [
+        {"step": 100, "agent": 0, "stream": "py", "type": "cap_discovered",
+         "payload": {"gear_sig": ["miner"], "cap": 4}},
+    ]
+    run = _make_run(tmp_path, events)
+    r = mining_trips_efficient(agent=0, max_bumps_per_trip=3)(run)
+    assert not r.passed
+    assert "no mining trips" in r.message
+
+
+def test_known_entities_at_least_none(tmp_path: Path) -> None:
+    run = _make_run(tmp_path, [])
+    r = known_entities_at_least(agent=0, minimum=1)(run)
+    assert not r.passed
+    assert "no world_model_summary" in r.message
+
+
+def test_known_entities_at_least_passes(tmp_path: Path) -> None:
+    events = [
+        {"step": 10, "agent": 0, "stream": "py", "type": "world_model_summary",
+         "payload": {"known_entities": 5}},
+    ]
+    run = _make_run(tmp_path, events)
+    r = known_entities_at_least(agent=0, minimum=3)(run)
+    assert r.passed
+
+
+def test_known_entities_at_least_fails(tmp_path: Path) -> None:
+    events = [
+        {"step": 10, "agent": 0, "stream": "py", "type": "world_model_summary",
+         "payload": {"known_entities": 2}},
+    ]
+    run = _make_run(tmp_path, events)
+    r = known_entities_at_least(agent=0, minimum=5)(run)
     assert not r.passed
