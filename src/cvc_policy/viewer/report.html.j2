@@ -271,14 +271,16 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   function _findLatestHeartbeat(agent, step) {
     var entries = inventoryByAgentStep[String(agent)];
     if (!entries || entries.length === 0) return null;
-    // Binary search for the largest entries[i].step <= step.
+    // Binary search for the largest entries[i].step <= step. If none
+    // qualify (scrubber before the first recorded snapshot), fall back
+    // to the earliest entry so the panel shows *something* on load.
     var lo = 0, hi = entries.length - 1, best = -1;
     while (lo <= hi) {
       var mid = (lo + hi) >> 1;
       if (entries[mid].step <= step) { best = mid; lo = mid + 1; }
       else { hi = mid - 1; }
     }
-    if (best < 0) return null;
+    if (best < 0) return entries[0];
     return entries[best];
   }
 
