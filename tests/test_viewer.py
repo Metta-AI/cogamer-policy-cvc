@@ -153,6 +153,30 @@ def test_report_replay_card_present_when_replay_file_exists(
     assert "replay-card" in html
 
 
+def test_render_includes_compact_copy_badge(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "my-run")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+    assert 'class="copy-badge"' in html
+    assert 'data-copy="softmax cogames replay ' in html
+
+
+def test_report_replay_copy_badge_uses_absolute_path(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "my-run")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+    m = re.search(r'data-copy="softmax cogames replay ([^"]+)"', html)
+    assert m is not None
+    path_part = m.group(1)
+    assert Path(path_part).is_absolute()
+    assert Path(path_part).exists()
+    assert "replay.json.z" in path_part
+
+
 def test_render_includes_mettascope_iframe(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 

@@ -57,6 +57,12 @@ svg.timeline line.cursor { stroke: var(--accent); stroke-width: 1; }
 .replay-card iframe { width: 100%; min-height: 480px; border: 0;
   background: var(--panel2); border-radius: 4px; }
 .replay-fallback { padding: 1em; color: var(--muted); font-size: 0.9em; }
+.replay-cmd-line { font-size: 0.85em; opacity: 0.7; margin-top: 0.5em;
+  display: flex; gap: 0.5em; align-items: center; }
+.replay-cmd-line code { flex: 1; word-break: break-all; }
+.copy-badge { font-size: 0.75em; padding: 1px 6px;
+  border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+  background: transparent; color: var(--fg); font-family: inherit; }
 .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .tabs button { background: var(--panel2); color: var(--fg); border: 0;
   padding: 4px 10px; border-radius: 4px 4px 0 0; cursor: pointer;
@@ -145,6 +151,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     {% if has_replay %}
     <iframe id="mettascope" allowfullscreen></iframe>
     <noscript>JavaScript required for embedded replay.</noscript>
+    <div class="replay-cmd-line">
+      <code>softmax cogames replay {{ replay_abs_path }}</code>
+      <button class="copy-badge" type="button"
+        data-copy="softmax cogames replay {{ replay_abs_path }}">copy</button>
+    </div>
     {% else %}
     <div class="meta">(no replay.json.z found)</div>
     {% endif %}
@@ -298,6 +309,14 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   document.querySelectorAll('.jump-fail').forEach(function (b) {
     b.addEventListener('click', function () { setStep(+b.dataset.step); });
+  });
+
+  // Delegated copy handler for any element with data-copy.
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-copy]');
+    if (!el) return;
+    var text = el.getAttribute('data-copy') || '';
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
   });
 
   (function setupReplay() {
