@@ -28,10 +28,38 @@ def test_view_errors_on_missing_run(tmp_path) -> None:
     assert "no such run" in result.output.lower()
 
 
-def test_test_cov_stub_exits_zero() -> None:
+def test_test_cov_invokes_pytest_with_coverage(monkeypatch) -> None:
+    import subprocess
+
+    calls: list[list[str]] = []
+
+    class _FakeCompleted:
+        returncode = 0
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        return _FakeCompleted()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
     result = CliRunner().invoke(app, ["test-cov"])
     assert result.exit_code == 0
-    assert "not yet implemented" in result.output.lower()
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert "pytest" in cmd
+    assert "--cov=cvc_policy" in cmd
+    assert "--cov-report=term-missing" in cmd
+    assert "--cov-report=xml" in cmd
+
+
+def test_test_cov_propagates_nonzero_exit(monkeypatch) -> None:
+    import subprocess
+
+    class _FakeCompleted:
+        returncode = 3
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _FakeCompleted())
+    result = CliRunner().invoke(app, ["test-cov"])
+    assert result.exit_code == 3
 
 
 def test_scenario_list_shows_registered_scenarios() -> None:

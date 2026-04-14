@@ -22,7 +22,7 @@ llm = ["anthropic>=0.64.0"]
 test = ["pytest>=8.0"]
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pytest-timeout", "pytest-asyncio"]
+dev = ["pytest>=8.0", "pytest-timeout", "pytest-asyncio", "pytest-cov>=6", "hypothesis>=6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

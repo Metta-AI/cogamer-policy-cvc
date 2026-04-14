@@ -10,3 +10,6 @@ cogamer/todos.md
 .setup-*.done
 .setup-*.lock
 runs/
+.coverage
+coverage.xml
+.hypothesis/

@@ -256,8 +256,21 @@ def play(
 
 @app.command("test-cov")
 def test_cov() -> None:
-    """Run pytest with coverage. Stub until Batch 4."""
-    typer.echo("test-cov: not yet implemented (Batch 4)")
+    """Run pytest with coverage (term-missing + xml)."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--cov=cvc_policy",
+            "--cov-report=term-missing",
+            "--cov-report=xml",
+        ],
+    )
+    raise typer.Exit(code=result.returncode)
 
 
 if __name__ == "__main__":
