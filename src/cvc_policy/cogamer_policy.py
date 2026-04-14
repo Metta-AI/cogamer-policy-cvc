@@ -109,14 +109,28 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             gs.engine._llm_objective = state.llm_objective
 
         gs.process_obs(obs)
+        self._recorder.set_step(gs.step_index)
         prev_role = gs.role
         gs.role = self._invoke_sync("desired_role", gs)
         # LLM role override wins over the heuristic role choice (soft hint).
         if state.llm_role_override is not None:
             gs.role = state.llm_role_override
+        if gs.role != prev_role:
+            self._recorder.emit(
+                type="role_change",
+                agent=self._agent_id,
+                stream="py",
+                payload={"from": prev_role, "to": gs.role},
+            )
 
         action, summary = self._invoke_sync("step", gs)
         gs.finalize_step(summary)
+        self._recorder.emit(
+            type="action",
+            agent=self._agent_id,
+            stream="py",
+            payload={"role": gs.role, "summary": summary},
+        )
 
         # Heartbeat: feed the LLM a periodic snapshot.
         if state.worker is not None and gs.step_index % _HEARTBEAT_EVERY == 0:
