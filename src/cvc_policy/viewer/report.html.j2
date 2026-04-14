@@ -200,7 +200,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         <span class="group-label">Types</span>
         <div class="chips" id="type-chips">
           {% for t, n, color in type_counts %}
-          <span class="chip" data-type="{{ t }}">
+          <span class="chip{% if t == 'inventory' %} off{% endif %}" data-type="{{ t }}">
             <span class="dot" style="background: {{ color }}"></span>
             {{ t }} <span class="meta">({{ n }})</span>
           </span>
@@ -320,7 +320,9 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   var typeChips = document.getElementById('type-chips');
   var tabs = document.getElementById('tabs');
 
-  var hiddenTypes = {};
+  // Default-hide the per-tick `inventory` event type from the log; it's
+  // the data source for the inventory panel and only adds noise inline.
+  var hiddenTypes = {"inventory": true};
   var hiddenAgents = {};
   var currentTab = 'all';
 

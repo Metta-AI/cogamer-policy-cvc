@@ -140,25 +140,33 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
 
         action, summary = self._invoke_sync("step", gs)
         gs.finalize_step(summary)
-        inventory: dict[str, int] = {}
-        hp_val: int = 0
-        mg_state = getattr(gs, "mg_state", None)
-        if mg_state is not None:
-            inventory = dict(mg_state.self_state.inventory)
-            hp_val = int(inventory.get("hp", 0))
-        payload: dict[str, Any] = {"role": gs.role, "summary": summary}
-        if inventory:
-            payload["inventory"] = inventory
-            payload["hp"] = hp_val
-        pos = getattr(gs, "position", None)
-        if pos is not None:
-            payload["pos"] = list(pos)
         self._recorder.emit(
             type="action",
             agent=self._agent_id,
             stream="py",
-            payload=payload,
+            payload={"role": gs.role, "summary": summary},
         )
+        # Per-tick inventory snapshot for the viewer's inventory panel.
+        # Kept as a separate event type so volatile inventory data does
+        # not leak into `action` payloads (which would defeat the log
+        # duplicate-merge that keys on payload text).
+        mg_state = getattr(gs, "mg_state", None)
+        if mg_state is not None:
+            inventory = dict(mg_state.self_state.inventory)
+            pos = getattr(gs, "position", None)
+            inv_payload: dict[str, Any] = {
+                "inventory": inventory,
+                "hp": int(inventory.get("hp", 0)),
+                "role": gs.role,
+            }
+            if pos is not None:
+                inv_payload["pos"] = list(pos)
+            self._recorder.emit(
+                type="inventory",
+                agent=self._agent_id,
+                stream="py",
+                payload=inv_payload,
+            )
         target_kind = getattr(gs.engine, "_current_target_kind", None)
         target_pos = getattr(gs.engine, "_current_target_position", None)
         if target_kind and target_pos is not None:
