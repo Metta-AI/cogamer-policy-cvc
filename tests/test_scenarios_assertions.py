@@ -11,11 +11,20 @@ from cvc_policy.scenarios.assertions import (
     after_heavy_trip_switches_target,
     cap_discovered_by,
     has_action_event_per_agent,
-    map_coverage_at_least,
     mining_trips_efficient,
     no_crash,
     no_target_at,
 )
+
+
+def test_unused_assertion_helpers_are_gone() -> None:
+    """map_coverage_at_least and extractors_known_at_least were dead
+    weight backed by misleading fields; removed so they can't lock
+    the events.json schema."""
+    import cvc_policy.scenarios.assertions as mod
+
+    assert not hasattr(mod, "map_coverage_at_least")
+    assert not hasattr(mod, "extractors_known_at_least")
 
 
 def _make_run(tmp: Path, events: list[dict], result: dict | None = None) -> Run:
@@ -197,36 +206,6 @@ def test_mining_trips_efficient_fails_on_wasted_bumps(tmp_path: Path) -> None:
     ]
     run = _make_run(tmp_path, events)
     r = mining_trips_efficient(agent=0, max_bumps_per_trip=4)(run)
-    assert not r.passed
-
-
-def test_map_coverage_at_least_passes(tmp_path: Path) -> None:
-    events = [
-        {
-            "step": 299,
-            "agent": 0,
-            "stream": "py",
-            "type": "world_model_summary",
-            "payload": {"known_cells": 50, "reachable_cells": 100},
-        }
-    ]
-    run = _make_run(tmp_path, events)
-    r = map_coverage_at_least(agent=0, fraction=0.3)(run)
-    assert r.passed
-
-
-def test_map_coverage_at_least_fails(tmp_path: Path) -> None:
-    events = [
-        {
-            "step": 299,
-            "agent": 0,
-            "stream": "py",
-            "type": "world_model_summary",
-            "payload": {"known_cells": 10, "reachable_cells": 100},
-        }
-    ]
-    run = _make_run(tmp_path, events)
-    r = map_coverage_at_least(agent=0, fraction=0.3)(run)
     assert not r.passed
 
 
