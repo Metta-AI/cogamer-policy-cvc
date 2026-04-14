@@ -16,8 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from mettagrid.policy.loader import initialize_or_load_policy
 from mettagrid.policy.policy import PolicySpec
-from mettagrid.runner.rollout import run_episode_local
+from mettagrid.policy.policy_env_interface import PolicyEnvInterface
+from mettagrid.runner.rollout import resolve_env_for_seed, single_episode_rollout
 
 from cvc_policy.scenarios import Scenario
 from cvc_policy.scenarios._run import Run
@@ -73,6 +75,36 @@ def _validate_policy_kwargs(policy_kwargs: dict[str, Any]) -> None:
             f"unknown CvCPolicy kwarg(s): {sorted(bad)}. "
             f"Allowed: {sorted(_ALLOWED_POLICY_KWARGS)}"
         )
+
+
+def _drive_rollout(*, env_cfg: Any, spec: PolicySpec, run_dir: Path, seed: int) -> int:
+    """Run one episode. Returns steps executed.
+
+    Inlines the `run_episode_local` flow so we can call
+    `CvCPolicy._on_episode_end` synchronously after rollout (to flush
+    events.json before assertion code reads it). Atexit-only flush
+    would not fire until interpreter shutdown.
+    """
+    env_for_rollout = resolve_env_for_seed(env_cfg, seed)
+    env_interface = PolicyEnvInterface.from_mg_cfg(env_for_rollout)
+    policy = initialize_or_load_policy(env_interface, spec)
+    assignments = [0] * env_for_rollout.game.num_agents
+    result, replay = single_episode_rollout(
+        [policy],
+        assignments,
+        env_for_rollout,
+        seed=seed,
+        max_action_time_ms=30_000,
+        render_mode="none",
+        autostart=False,
+        capture_replay=True,
+    )
+    if replay is not None:
+        replay.write_replay((run_dir / "replay.json.z").resolve().as_uri())
+    end = getattr(policy, "_on_episode_end", None)
+    if callable(end):
+        end()
+    return result.steps
 
 
 def _make_run_id(scenario_name: str) -> str:
@@ -143,16 +175,9 @@ def run_scenario(
         class_path="cvc_policy.cogamer_policy.CvCPolicy",
         init_kwargs={"record_dir": str(run_dir), **scenario.policy_kwargs},
     )
-    assignments = [0] * env_cfg.game.num_agents
     started_at = datetime.now(timezone.utc).isoformat()
     t0 = time.time()
-    result, _replay = run_episode_local(
-        policy_specs=[spec],
-        assignments=assignments,
-        env=env_cfg,
-        replay_path=run_dir / "replay.json.z",
-        seed=scenario.seed,
-    )
+    steps_run = _drive_rollout(env_cfg=env_cfg, spec=spec, run_dir=run_dir, seed=scenario.seed)
     duration_s = time.time() - t0
 
     # Load Run, evaluate assertions.
@@ -171,7 +196,7 @@ def run_scenario(
         assertion_results,
         started_at=started_at,
         duration_s=duration_s,
-        steps=result.steps,
+        steps=steps_run,
         status=status,
     )
     # Re-load Run so callers see the freshly-written result.json.
