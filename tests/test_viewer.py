@@ -573,7 +573,7 @@ def test_log_has_step_separators_between_distinct_steps(tmp_path: Path) -> None:
     assert len(seps) >= 2
 
 
-def test_log_has_colored_stream_tags(tmp_path: Path) -> None:
+def test_log_colors_lines_by_stream(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     events = [
@@ -584,14 +584,19 @@ def test_log_has_colored_stream_tags(tmp_path: Path) -> None:
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
     html = render(run_dir).read_text()
-    assert 'class="stream stream-py"' in html
-    assert 'class="stream stream-llm"' in html
-    # The literal [py]/[llm] text should not appear in the log panel.
+    # Stream is encoded via data-stream on each .line; CSS colors the line.
+    assert 'data-stream="py"' in html
+    assert 'data-stream="llm"' in html
+    assert '#log .line[data-stream="py"]' in html
+    assert '#log .line[data-stream="llm"]' in html
+    # No literal [py]/[llm] text in the log, no stream tag spans.
     m = re.search(r'<div id="log">(.*?)</div>\s*</section>', html, re.DOTALL)
     assert m is not None
     log = m.group(1)
     assert "[py]" not in log
     assert "[llm]" not in log
+    assert 'class="stream stream-py"' not in log
+    assert 'class="stream stream-llm"' not in log
 
 
 def test_log_uses_per_agent_colors(tmp_path: Path) -> None:
