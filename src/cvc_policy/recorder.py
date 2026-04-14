@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -64,6 +65,7 @@ class EventRecorder:
     ) -> None:
         self._step = 0
         self.events: list[dict[str, Any]] = []
+        self._events_by_step: dict[int, list[dict[str, Any]]] = defaultdict(list)
         self._stderr_streams: frozenset[str] = frozenset(stderr_streams or ())
         self._record_dir = record_dir
 
@@ -86,13 +88,14 @@ class EventRecorder:
             "payload": dict(payload),
         }
         self.events.append(ev)
+        self._events_by_step[self._step].append(ev)
         if stream in self._stderr_streams:
             print(fmt(ev), file=sys.stderr, flush=True)
 
     def events_for_step(
         self, step: int, *, agent: int | None = None
     ) -> list[dict[str, Any]]:
-        out = [e for e in self.events if e["step"] == step]
+        out = list(self._events_by_step.get(step, ()))
         if agent is not None:
             out = [e for e in out if e["agent"] == agent]
         return out

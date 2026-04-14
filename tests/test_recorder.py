@@ -98,3 +98,33 @@ def test_events_for_step_with_agent_filter():
     rec.emit(type="action", agent=1, stream="py", payload={})
     assert len(rec.events_for_step(3, agent=0)) == 1
     assert rec.events_for_step(3, agent=0)[0]["agent"] == 0
+
+
+def test_events_for_step_is_O1_after_many_emits():
+    rec = EventRecorder()
+    for s in range(500):
+        rec.set_step(s)
+        for a in range(8):
+            rec.emit(type="action", agent=a, stream="py", payload={})
+    import time
+    t0 = time.perf_counter()
+    for s in range(500):
+        _ = rec.events_for_step(s)
+    assert time.perf_counter() - t0 < 0.05
+
+
+def test_events_for_step_returns_correct_events_and_is_stable():
+    rec = EventRecorder()
+    rec.set_step(1)
+    rec.emit(type="action", agent=0, stream="py", payload={"s": 1})
+    rec.set_step(2)
+    rec.emit(type="action", agent=0, stream="py", payload={"s": 2})
+    snapshot_at_1 = list(rec.events_for_step(1))
+    rec.set_step(3)
+    rec.emit(type="action", agent=0, stream="py", payload={"s": 3})
+    # later emits at other steps don't change earlier-step results
+    assert rec.events_for_step(1) == snapshot_at_1
+    assert len(rec.events_for_step(1)) == 1
+    assert rec.events_for_step(1)[0]["payload"] == {"s": 1}
+    assert len(rec.events_for_step(2)) == 1
+    assert len(rec.events_for_step(3)) == 1
