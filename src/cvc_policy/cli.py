@@ -1,13 +1,19 @@
 """`cgp` — CvC policy diagnostic CLI.
 
-Top-level typer app with subcommand groups. Most commands are stubbed
-and filled in across Batch 2 (scenarios, play) and later batches
-(view, test-cov).
+Top-level typer app with subcommand groups. Most commands are
+implemented across Batch 2; view + runs + test-cov are stubs until
+later batches.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Optional
+
 import typer
+
+from cvc_policy.scenarios import registry
+from cvc_policy.scenarios.harness import run_scenario
 
 app = typer.Typer(
     name="cgp",
@@ -20,10 +26,102 @@ scenario_app = typer.Typer(help="Scenario registry + runner.", no_args_is_help=T
 app.add_typer(scenario_app, name="scenario")
 
 
+def _load_all_scenarios() -> None:
+    """Import every scenario case module so the registry is populated.
+
+    Called lazily by CLI commands that need the full registry. Each
+    import has a side effect of registering the scenario via the
+    `@scenario` decorator.
+    """
+    # Imports are local so scenario modules aren't loaded just to
+    # print `--help` on an unrelated subcommand.
+    import cvc_policy.scenarios.cases.empty_extractor_skipped  # noqa: F401
+    import cvc_policy.scenarios.cases.exploration_small  # noqa: F401
+    import cvc_policy.scenarios.cases.mining_discovers_cap  # noqa: F401
+    import cvc_policy.scenarios.cases.mining_trip_efficiency  # noqa: F401
+    import cvc_policy.scenarios.cases.smoke  # noqa: F401
+
+
 @scenario_app.command("list")
 def scenario_list() -> None:
-    """List registered scenarios. (Registry is empty until Task 2.2.)"""
-    typer.echo("(no scenarios registered)")
+    """List registered scenarios grouped by tier."""
+    _load_all_scenarios()
+    reg = registry()
+    if not reg:
+        typer.echo("(no scenarios registered)")
+        return
+    current_tier: int | None = None
+    for name, s in reg.items():
+        if s.tier != current_tier:
+            typer.echo(f"tier {s.tier}:")
+            current_tier = s.tier
+        typer.echo(f"  {name}  ({s.mission}, cogs={s.cogs}, steps={s.steps})")
+
+
+@scenario_app.command("run")
+def scenario_run(
+    name: str,
+    steps: Optional[int] = typer.Option(None, "--steps", help="Override scenario steps."),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Override scenario seed."),
+    no_assert: bool = typer.Option(False, "--no-assert", help="Skip assertions."),
+    runs_root: Path = typer.Option(Path("runs"), "--runs-root", help="Run folder root."),
+) -> None:
+    """Run a single scenario by name."""
+    _load_all_scenarios()
+    reg = registry()
+    if name not in reg:
+        typer.echo(f"unknown scenario: {name}")
+        typer.echo(f"available: {', '.join(reg.keys())}")
+        raise typer.Exit(code=2)
+    s = reg[name]
+    if seed is not None:
+        s = _replace_seed(s, seed)
+    run = run_scenario(
+        s,
+        steps_override=steps,
+        runs_root=runs_root,
+        skip_assertions=no_assert,
+    )
+    status = run.result.get("status", "unknown")
+    typer.echo(f"{name}: {status} ({run.run_dir})")
+    for a in run.result.get("assertions", []):
+        mark = "PASS" if a["passed"] else "FAIL"
+        typer.echo(f"  [{mark}] {a['name']}: {a['message']}")
+    if status != "passed":
+        raise typer.Exit(code=1)
+
+
+@scenario_app.command("run-all")
+def scenario_run_all(
+    tier: Optional[int] = typer.Option(None, "--tier", help="Filter by tier."),
+    runs_root: Path = typer.Option(Path("runs"), "--runs-root", help="Run folder root."),
+) -> None:
+    """Run every registered scenario (optionally filtered by tier)."""
+    _load_all_scenarios()
+    reg = registry()
+    selected = [s for s in reg.values() if tier is None or s.tier == tier]
+    if not selected:
+        typer.echo("(no scenarios matched)")
+        raise typer.Exit(code=0)
+    failures: list[str] = []
+    for s in selected:
+        run = run_scenario(s, runs_root=runs_root)
+        status = run.result.get("status", "unknown")
+        typer.echo(f"{s.name}: {status}")
+        if status != "passed":
+            failures.append(s.name)
+    typer.echo(
+        f"\n{len(selected) - len(failures)}/{len(selected)} passed"
+        + (f" — failed: {', '.join(failures)}" if failures else "")
+    )
+    if failures:
+        raise typer.Exit(code=1)
+
+
+def _replace_seed(scenario_obj, seed: int):
+    import dataclasses
+
+    return dataclasses.replace(scenario_obj, seed=seed)
 
 
 @app.command("view")
