@@ -356,6 +356,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cogames" },
     { name = "mettagrid" },
+    { name = "typer" },
 ]
 
 [package.optional-dependencies]
@@ -379,6 +380,7 @@ requires-dist = [
     { name = "cogames", git = "https://github.com/Metta-AI/cogames.git" },
     { name = "mettagrid", git = "https://github.com/Metta-AI/mettagrid.git" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "typer", specifier = ">=0.12" },
 ]
 provides-extras = ["llm", "test"]
 
