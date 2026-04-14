@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CvC run {{ run_id }}</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel2: #273449;
+  --fg: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #10b981;
+  --bad: #ef4444;
+  --warn: #f59e0b;
+  --border: #334155;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline;
+  background: var(--panel); }
+header h1 { font-size: 15px; margin: 0; color: var(--accent); }
+header .meta { color: var(--muted); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-weight: 600; }
+.badge.passed { background: var(--ok); color: #04231a; }
+.badge.failed { background: var(--bad); color: #2a0606; }
+.badge.crashed { background: var(--bad); color: #2a0606; }
+.badge.unknown { background: var(--border); color: var(--fg); }
+.banner-fail { background: #450a0a; border: 1px solid var(--bad);
+  padding: 10px 16px; margin: 0; color: #fecaca; }
+.banner-fail button { background: transparent; color: var(--bad);
+  border: 1px solid var(--bad); padding: 2px 8px; margin-right: 8px;
+  cursor: pointer; font-family: inherit; }
+main { display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: 10px;
+  padding: 10px; }
+section { background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px; }
+section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip { padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--panel2); cursor: pointer; user-select: none;
+  display: inline-flex; align-items: center; gap: 6px; }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.chip.off { opacity: 0.4; }
+.timeline-row { display: grid; grid-template-columns: 24px 40px 1fr;
+  align-items: center; gap: 6px; margin-bottom: 4px; }
+.timeline-row label { color: var(--muted); font-size: 12px; }
+svg.timeline { width: 100%; height: 18px; background: var(--panel2);
+  border-radius: 3px; }
+svg.timeline rect.tick { cursor: pointer; }
+svg.timeline line.cursor { stroke: var(--accent); stroke-width: 1; }
+.replay-card kbd { display: block; background: var(--panel2);
+  padding: 6px 8px; border-radius: 4px; color: var(--fg);
+  border: 1px solid var(--border); white-space: pre-wrap;
+  word-break: break-all; margin-top: 6px; }
+.replay-card button { margin-top: 6px; background: var(--accent);
+  color: #04231a; border: 0; padding: 4px 10px; border-radius: 4px;
+  cursor: pointer; font-family: inherit; font-weight: 600; }
+.tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+.tabs button { background: var(--panel2); color: var(--fg); border: 0;
+  padding: 4px 10px; border-radius: 4px 4px 0 0; cursor: pointer;
+  font-family: inherit; }
+.tabs button.active { background: var(--accent); color: #04231a; }
+input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
+  color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
+  font-family: inherit; }
+#log { max-height: 70vh; overflow-y: auto; margin-top: 6px; }
+#log .line { padding: 2px 4px; border-left: 3px solid transparent;
+  white-space: pre-wrap; word-break: break-word; }
+#log .line.current { border-left-color: var(--accent); background: var(--panel2); }
+#log .line.hidden { display: none; }
+#log .line .meta { color: var(--muted); }
+footer { position: sticky; bottom: 0; background: var(--panel);
+  border-top: 1px solid var(--border); padding: 8px 16px;
+  display: flex; gap: 10px; align-items: center; }
+footer input[type="range"] { flex: 1; }
+footer button, footer select { background: var(--panel2); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+  cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{ run_id }}</h1>
+  <span class="badge {{ status }}">{{ status }}</span>
+  <span class="meta">scenario={{ scenario }}</span>
+  <span class="meta">duration={{ '%.2f'|format(duration_s) }}s</span>
+  <span class="meta">cogs={{ cogs }}</span>
+  <span class="meta">seed={{ seed }}</span>
+  <span class="meta">steps={{ steps }}</span>
+  <span class="meta">mission={{ mission }}</span>
+</header>
+
+{% if status == "failed" or status == "crashed" %}
+<div class="banner-fail">
+  <strong>Run {{ status }}.</strong>
+  {% for a in assertions %}
+    {% if not a.passed %}
+      <button type="button" class="jump-fail"
+        data-step="{{ a.failed_at_step if a.failed_at_step is not none else 0 }}">
+        {{ a.name }}
+      </button>
+      <span>{{ a.message }}{% if a.failed_at_step is not none %} (step {{ a.failed_at_step }}){% endif %}</span>
+      &nbsp;&nbsp;
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<main>
+  <section>
+    <h2>Agent timelines</h2>
+    <div class="chips" id="type-chips">
+      {% for t, n, color in type_counts %}
+      <span class="chip" data-type="{{ t }}">
+        <span class="dot" style="background: {{ color }}"></span>
+        {{ t }} <span class="meta">({{ n }})</span>
+      </span>
+      {% endfor %}
+    </div>
+    {% for row in agent_rows %}
+    <div class="timeline-row" data-agent="{{ row.agent }}">
+      <input type="checkbox" checked class="agent-toggle" data-agent="{{ row.agent }}">
+      <label>a{{ row.agent }}</label>
+      <svg class="timeline" viewBox="0 0 1000 18" preserveAspectRatio="none"
+           data-agent="{{ row.agent }}">
+        {% for t in row.ticks %}
+        <rect class="tick"
+              x="{{ '%.2f'|format(t.x_pct * 10) }}" y="2"
+              width="3" height="14"
+              fill="{{ t.color }}"
+              data-step="{{ t.step }}"
+              data-agent="{{ row.agent }}"
+              data-type="{{ t.type }}"><title>step {{ t.step }} {{ t.type }}</title></rect>
+        {% endfor %}
+        <line class="cursor" x1="0" y1="0" x2="0" y2="18"></line>
+      </svg>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="replay-card">
+    <h2>Replay</h2>
+    <div>game: <span class="meta">{{ mission }}</span></div>
+    <div>variants: <span class="meta">{{ variants|join(', ') or '(none)' }}</span></div>
+    <div>steps: <span class="meta">{{ steps }}</span></div>
+    {% if has_replay %}
+    <button type="button" id="copy-replay">Copy replay command</button>
+    <kbd id="replay-cmd">softmax cogames replay {{ replay_rel }}</kbd>
+    {% else %}
+    <div class="meta">(no replay.json.z found)</div>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div class="tabs" id="tabs">
+      <button type="button" class="tab active" data-tab="all">All</button>
+      <button type="button" class="tab" data-tab="py">Py</button>
+      <button type="button" class="tab" data-tab="llm">LLM</button>
+      <button type="button" class="tab" data-tab="team">Team</button>
+    </div>
+    <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
+    <div id="log">
+      {% for ln in log_lines %}
+      <div class="line" data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
+           data-agent="{{ ln.agent if ln.agent is not none else '' }}"
+           data-stream="{{ ln.stream }}"
+           data-type="{{ ln.type }}">{{ ln.text }}</div>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+
+<footer>
+  <button type="button" id="play">Play</button>
+  <input type="range" id="scrubber" min="0" max="{{ max_step }}" value="0">
+  <span id="step-label">step 0 / {{ max_step }}</span>
+  <select id="speed">
+    <option value="1">1x</option>
+    <option value="4">4x</option>
+    <option value="16">16x</option>
+  </select>
+</footer>
+
+<script type="application/json" id="events">{{ events_json|safe }}</script>
+<script>
+(function () {
+  var events = JSON.parse(document.getElementById('events').textContent);
+  var maxStep = {{ max_step }};
+  var scrub = document.getElementById('scrubber');
+  var stepLabel = document.getElementById('step-label');
+  var playBtn = document.getElementById('play');
+  var speedSel = document.getElementById('speed');
+  var search = document.getElementById('search');
+  var log = document.getElementById('log');
+  var typeChips = document.getElementById('type-chips');
+  var tabs = document.getElementById('tabs');
+
+  var hiddenTypes = {};
+  var hiddenAgents = {};
+  var currentTab = 'all';
+  var playing = false;
+  var timer = null;
+
+  function setStep(step) {
+    step = Math.max(0, Math.min(maxStep, Math.floor(step)));
+    scrub.value = step;
+    stepLabel.textContent = 'step ' + step + ' / ' + maxStep;
+    // Move cursor on each svg.
+    document.querySelectorAll('svg.timeline').forEach(function (svg) {
+      var x = maxStep > 0 ? (step / maxStep) * 1000 : 0;
+      var line = svg.querySelector('line.cursor');
+      if (line) { line.setAttribute('x1', x); line.setAttribute('x2', x); }
+    });
+    // Highlight current-step log lines.
+    log.querySelectorAll('.line').forEach(function (el) {
+      if (parseInt(el.dataset.step, 10) === step) el.classList.add('current');
+      else el.classList.remove('current');
+    });
+    // Scroll first current line into view.
+    var firstCurrent = log.querySelector('.line.current');
+    if (firstCurrent) firstCurrent.scrollIntoView({block: 'nearest'});
+  }
+
+  scrub.addEventListener('input', function () { setStep(+scrub.value); });
+
+  playBtn.addEventListener('click', function () {
+    playing = !playing;
+    playBtn.textContent = playing ? 'Pause' : 'Play';
+    if (timer) { clearInterval(timer); timer = null; }
+    if (playing) {
+      var speed = +speedSel.value;
+      timer = setInterval(function () {
+        var s = +scrub.value + speed;
+        if (s >= maxStep) { s = maxStep; playing = false;
+          playBtn.textContent = 'Play'; clearInterval(timer); timer = null; }
+        setStep(s);
+      }, 50);
+    }
+  });
+
+  function applyFilters() {
+    var q = (search.value || '').toLowerCase();
+    log.querySelectorAll('.line').forEach(function (el) {
+      var type = el.dataset.type;
+      var agent = el.dataset.agent;
+      var stream = el.dataset.stream;
+      var text = el.textContent.toLowerCase();
+      var hide = false;
+      if (hiddenTypes[type]) hide = true;
+      if (agent !== '' && hiddenAgents[agent]) hide = true;
+      if (currentTab === 'py' && stream !== 'py') hide = true;
+      if (currentTab === 'llm' && stream !== 'llm') hide = true;
+      if (currentTab === 'team' && agent !== '') hide = true;
+      if (q && text.indexOf(q) === -1) hide = true;
+      el.classList.toggle('hidden', hide);
+    });
+    document.querySelectorAll('svg.timeline rect.tick').forEach(function (t) {
+      var hide = !!hiddenTypes[t.dataset.type];
+      t.style.display = hide ? 'none' : '';
+    });
+    document.querySelectorAll('.timeline-row').forEach(function (row) {
+      var a = row.dataset.agent;
+      row.style.display = hiddenAgents[a] ? 'none' : '';
+    });
+  }
+
+  typeChips.addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip');
+    if (!chip) return;
+    var t = chip.dataset.type;
+    hiddenTypes[t] = !hiddenTypes[t];
+    chip.classList.toggle('off', !!hiddenTypes[t]);
+    applyFilters();
+  });
+
+  document.querySelectorAll('.agent-toggle').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      hiddenAgents[cb.dataset.agent] = !cb.checked;
+      applyFilters();
+    });
+  });
+
+  tabs.addEventListener('click', function (e) {
+    var b = e.target.closest('.tab');
+    if (!b) return;
+    currentTab = b.dataset.tab;
+    tabs.querySelectorAll('.tab').forEach(function (x) {
+      x.classList.toggle('active', x === b);
+    });
+    applyFilters();
+  });
+
+  search.addEventListener('input', applyFilters);
+
+  document.querySelectorAll('svg.timeline rect.tick').forEach(function (t) {
+    t.addEventListener('click', function () { setStep(+t.dataset.step); });
+  });
+
+  document.querySelectorAll('.jump-fail').forEach(function (b) {
+    b.addEventListener('click', function () { setStep(+b.dataset.step); });
+  });
+
+  var copyBtn = document.getElementById('copy-replay');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      var cmd = document.getElementById('replay-cmd').textContent;
+      if (navigator.clipboard) navigator.clipboard.writeText(cmd);
+    });
+  }
+
+  setStep(0);
+})();
+</script>
+</body>
+</html>
