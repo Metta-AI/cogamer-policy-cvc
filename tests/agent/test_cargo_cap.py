@@ -168,3 +168,24 @@ class TestMiningBumpEfficiency:
         # Both persist.
         assert tracker.known_cap(()) == 4
         assert tracker.known_cap(("miner",)) == 40
+
+
+def test_discovery_callback_fires_once_on_new_cap():
+    from cvc_policy.agent.cargo_cap import CargoCapTracker
+
+    seen: list[tuple[tuple[str, ...], int]] = []
+    tracker = CargoCapTracker(on_discovery=lambda sig, cap: seen.append((sig, cap)))
+    # Simulate mining: cargo grows 0→10→20→30→40, then plateau at 40.
+    for i, c in enumerate([0, 10, 20, 30, 40, 40]):
+        tracker.observe(gear_sig=("miner",), cargo=c, mined_last_tick=i > 0)
+    assert seen == [(("miner",), 40)]
+
+
+def test_discovery_callback_not_refired_on_same_cap():
+    from cvc_policy.agent.cargo_cap import CargoCapTracker
+
+    seen: list[tuple[tuple[str, ...], int]] = []
+    tracker = CargoCapTracker(on_discovery=lambda sig, cap: seen.append((sig, cap)))
+    for i, c in enumerate([0, 10, 20, 30, 40, 40, 40]):
+        tracker.observe(gear_sig=("miner",), cargo=c, mined_last_tick=i > 0)
+    assert seen == [(("miner",), 40)]

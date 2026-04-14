@@ -11,6 +11,8 @@ combinations have independent limits.
 
 from __future__ import annotations
 
+from typing import Callable
+
 
 GearSig = tuple[str, ...]
 
@@ -18,10 +20,14 @@ GearSig = tuple[str, ...]
 class CargoCapTracker:
     """Tracks observed cargo caps per gear signature."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_discovery: Callable[[GearSig, int], None] | None = None,
+    ) -> None:
         self._cap: dict[GearSig, int] = {}
         self._prev_cargo: int | None = None
         self._prev_sig: GearSig | None = None
+        self._on_discovery = on_discovery
 
     def observe(self, *, gear_sig: GearSig, cargo: int, mined_last_tick: bool) -> None:
         if (
@@ -37,6 +43,8 @@ class CargoCapTracker:
             # blocking a mine attempt mid-trip after deposit).
             if existing is None or cargo > existing:
                 self._cap[gear_sig] = cargo
+                if self._on_discovery is not None:
+                    self._on_discovery(gear_sig, cargo)
         self._prev_cargo = cargo
         self._prev_sig = gear_sig
 

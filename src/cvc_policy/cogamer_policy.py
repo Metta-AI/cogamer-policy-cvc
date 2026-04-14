@@ -82,6 +82,19 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             self._policy_env_info,
             agent_id=self._agent_id,
         )
+        # Wire cap-discovery events into the recorder.
+        agent_id = self._agent_id
+        recorder = self._recorder
+
+        def _on_cap_discovery(sig: tuple[str, ...], cap: int) -> None:
+            recorder.emit(
+                type="cap_discovered",
+                agent=agent_id,
+                stream="py",
+                payload={"gear_sig": list(sig), "cap": cap},
+            )
+
+        gs.engine._cargo_cap._on_discovery = _on_cap_discovery
         state = CvCAgentState(game_state=gs)
         # Wire log_to_llm onto GameState so code programs can push events.
         gs.log_to_llm = lambda event: _log(state.log_queue, event)  # type: ignore[attr-defined]
