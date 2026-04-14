@@ -8,6 +8,7 @@ from pathlib import Path
 from cvc_policy.scenarios._run import Run
 from cvc_policy.scenarios.assertions import (
     AssertResult,
+    after_heavy_trip_switches_target,
     cap_discovered_by,
     has_action_event_per_agent,
     map_coverage_at_least,
@@ -226,4 +227,90 @@ def test_map_coverage_at_least_fails(tmp_path: Path) -> None:
     ]
     run = _make_run(tmp_path, events)
     r = map_coverage_at_least(agent=0, fraction=0.3)(run)
+    assert not r.passed
+
+
+def test_after_heavy_trip_switches_target_passes(tmp_path: Path) -> None:
+    events = [
+        {
+            "step": 1,
+            "agent": 0,
+            "stream": "py",
+            "type": "target",
+            "payload": {"kind": "carbon_extractor", "pos": [4, 4]},
+        },
+        *[
+            {
+                "step": 2 + i,
+                "agent": 0,
+                "stream": "py",
+                "type": "action",
+                "payload": {"role": "miner", "summary": "mine_carbon"},
+            }
+            for i in range(30)
+        ],
+        {
+            "step": 40,
+            "agent": 0,
+            "stream": "py",
+            "type": "target",
+            "payload": {"kind": "oxygen_extractor", "pos": [9, 9]},
+        },
+        {
+            "step": 41,
+            "agent": 0,
+            "stream": "py",
+            "type": "action",
+            "payload": {"role": "miner", "summary": "mine_oxygen"},
+        },
+    ]
+    run = _make_run(tmp_path, events)
+    r = after_heavy_trip_switches_target(agent=0, heavy_threshold=25)(run)
+    assert r.passed
+
+
+def test_after_heavy_trip_switches_target_fails(tmp_path: Path) -> None:
+    events = [
+        {
+            "step": 1,
+            "agent": 0,
+            "stream": "py",
+            "type": "target",
+            "payload": {"kind": "carbon_extractor", "pos": [4, 4]},
+        },
+        *[
+            {
+                "step": 2 + i,
+                "agent": 0,
+                "stream": "py",
+                "type": "action",
+                "payload": {"role": "miner", "summary": "mine_carbon"},
+            }
+            for i in range(30)
+        ],
+        # non-extractor target to close the trip, then return to same spot
+        {
+            "step": 40,
+            "agent": 0,
+            "stream": "py",
+            "type": "target",
+            "payload": {"kind": "hub", "pos": [0, 0]},
+        },
+        {
+            "step": 50,
+            "agent": 0,
+            "stream": "py",
+            "type": "target",
+            "payload": {"kind": "carbon_extractor", "pos": [4, 4]},
+        },
+        {
+            "step": 51,
+            "agent": 0,
+            "stream": "py",
+            "type": "action",
+            "payload": {"role": "miner", "summary": "mine_carbon"},
+        },
+    ]
+    run = _make_run(tmp_path, events)
+    r = after_heavy_trip_switches_target(agent=0, heavy_threshold=25)(run)
     assert not r.passed

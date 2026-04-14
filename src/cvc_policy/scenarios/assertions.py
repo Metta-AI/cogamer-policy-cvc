@@ -267,6 +267,45 @@ def known_cells_at_least(
     return _check
 
 
+def after_heavy_trip_switches_target(
+    *, agent: int, heavy_threshold: int
+) -> Callable[[Run], AssertResult]:
+    """Assert: whenever a mining trip has >= heavy_threshold bumps
+    (proxy for self-draining the extractor), the next mining trip for
+    the same agent is at a different position.
+
+    This is the reframed form of `empty_extractor_skipped` — see
+    design doc §7a for the rationale.
+    """
+
+    def _check(run: Run) -> AssertResult:
+        trips = run.mining_trips(agent)
+        for i, t in enumerate(trips):
+            if t.bump_count < heavy_threshold:
+                continue
+            nxt = trips[i + 1] if i + 1 < len(trips) else None
+            if nxt is None:
+                # last trip in run; nothing to check
+                continue
+            if nxt.target_pos == t.target_pos:
+                return AssertResult(
+                    name="after_heavy_trip_switches_target",
+                    passed=False,
+                    message=(
+                        f"heavy trip at {t.target_pos} ({t.bump_count} bumps) "
+                        f"followed by another trip at the same position"
+                    ),
+                    failed_at_step=nxt.start_step,
+                )
+        return AssertResult(
+            name="after_heavy_trip_switches_target",
+            passed=True,
+            message=f"all heavy (>= {heavy_threshold} bump) trips switched targets",
+        )
+
+    return _check
+
+
 __all__ = [
     "AssertResult",
     "no_crash",
@@ -277,4 +316,5 @@ __all__ = [
     "map_coverage_at_least",
     "extractors_known_at_least",
     "known_cells_at_least",
+    "after_heavy_trip_switches_target",
 ]
