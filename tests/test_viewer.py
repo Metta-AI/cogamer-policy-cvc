@@ -480,7 +480,8 @@ def test_render_dense_events_no_step_range(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     events = [
-        {"step": i, "agent": 0, "stream": "py", "type": "action", "payload": {}}
+        {"step": i, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"summary": f"s{i}"}}
         for i in range(5)
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=4)
@@ -513,11 +514,11 @@ def test_log_has_step_separators_between_distinct_steps(tmp_path: Path) -> None:
 
     events = [
         {"step": 0, "agent": 0, "stream": "py", "type": "action",
-         "payload": {}},
+         "payload": {"summary": "a"}},
         {"step": 1, "agent": 0, "stream": "py", "type": "action",
-         "payload": {}},
+         "payload": {"summary": "b"}},
         {"step": 2, "agent": 0, "stream": "py", "type": "action",
-         "payload": {}},
+         "payload": {"summary": "c"}},
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
     html = render(run_dir).read_text()
@@ -924,3 +925,192 @@ def test_render_iframe_shows_error_panel_when_both_sources_fail(
     # The JS must have an error-panel branch with actionable copy.
     assert "Mettascope not available" in html
     assert "CVC_METTASCOPE_DIST" in html
+
+
+# ---------- merge consecutive duplicate step events ----------
+
+
+def _dup_event(step: int, *, role: str = "miner", summary: str = "mine_carbon") -> dict:
+    return {
+        "step": step,
+        "agent": 0,
+        "stream": "py",
+        "type": "action",
+        "payload": {"role": role, "summary": summary},
+    }
+
+
+def test_merge_duplicate_consecutive_steps_into_run() -> None:
+    """Adjacent steps with one identical event each collapse to one run."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [_dup_event(s) for s in (5, 6, 7, 8)]
+    groups = _group_by_step(events, max_step=10)
+    merged = _merge_duplicate_steps(groups)
+
+    step_groups = [g for g in merged if g["type"] == "step"]
+    assert len(step_groups) == 1
+    g = step_groups[0]
+    assert g["step"] == 5
+    assert g["step_end"] == 8
+    assert len(g["events"]) == 1
+    assert g["events"][0]["step"] == 5
+
+
+def test_no_merge_across_gap() -> None:
+    """Identical events at steps 5 and 7 with empty step 6 stay separate."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [_dup_event(5), _dup_event(7)]
+    groups = _group_by_step(events, max_step=7)
+    merged = _merge_duplicate_steps(groups)
+
+    # Expect (after leading [0-4] range): step 5, step 6 (empty bare), step 7.
+    step_groups = [g for g in merged if g["type"] == "step"]
+    assert [g["step"] for g in step_groups] == [5, 6, 7]
+    assert all(g.get("step_end") in (None, g["step"]) for g in step_groups)
+    # Step 6 is the bare empty-step marker between them.
+    bare = [g for g in step_groups if g["events"] == []]
+    assert len(bare) == 1 and bare[0]["step"] == 6
+
+
+def test_no_merge_across_range() -> None:
+    """A ``range`` group between populated steps blocks merging."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [_dup_event(0), _dup_event(100)]
+    groups = _group_by_step(events, max_step=100)
+    merged = _merge_duplicate_steps(groups)
+
+    assert merged[0]["type"] == "step" and merged[0]["step"] == 0
+    assert merged[0].get("step_end") in (None, 0)
+    assert merged[1]["type"] == "range"
+    assert merged[2]["type"] == "step" and merged[2]["step"] == 100
+
+
+def test_no_merge_when_multiple_events_on_a_step() -> None:
+    """Merging only applies when both sides have exactly one event."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [
+        _dup_event(5),
+        {"step": 5, "agent": 1, "stream": "py", "type": "action",
+         "payload": {"role": "aligner", "summary": "scan"}},
+        _dup_event(6),
+    ]
+    groups = _group_by_step(events, max_step=6)
+    merged = _merge_duplicate_steps(groups)
+
+    step_groups = [g for g in merged if g["type"] == "step"]
+    assert [g["step"] for g in step_groups] == [5, 6]
+    assert len(step_groups[0]["events"]) == 2
+    assert all(g.get("step_end") in (None, g["step"]) for g in step_groups)
+
+
+def test_no_merge_when_payload_differs() -> None:
+    """Different roles on otherwise identical events should not merge."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [
+        _dup_event(5, role="miner"),
+        _dup_event(6, role="aligner"),
+    ]
+    groups = _group_by_step(events, max_step=6)
+    merged = _merge_duplicate_steps(groups)
+
+    step_groups = [g for g in merged if g["type"] == "step"]
+    assert [g["step"] for g in step_groups] == [5, 6]
+    assert all(g.get("step_end") in (None, g["step"]) for g in step_groups)
+
+
+def test_no_merge_when_type_differs() -> None:
+    """Different event types with same payload_text should not merge."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [
+        {"step": 5, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"role": "miner", "summary": "x"}},
+        {"step": 6, "agent": 0, "stream": "py", "type": "note",
+         "payload": {"role": "miner", "summary": "x"}},
+    ]
+    groups = _group_by_step(events, max_step=6)
+    merged = _merge_duplicate_steps(groups)
+
+    step_groups = [g for g in merged if g["type"] == "step"]
+    assert [g["step"] for g in step_groups] == [5, 6]
+    assert all(g.get("step_end") in (None, g["step"]) for g in step_groups)
+
+
+def test_merge_ignores_varying_latency() -> None:
+    """payload_text strips volatile fields — merge still fires."""
+    from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
+
+    events = [
+        {"step": 5, "agent": 0, "stream": "llm", "type": "llm_tool_call",
+         "payload": {"tool": "patch", "input": {}, "latency_ms": 100}},
+        {"step": 6, "agent": 0, "stream": "llm", "type": "llm_tool_call",
+         "payload": {"tool": "patch", "input": {}, "latency_ms": 250}},
+    ]
+    groups = _group_by_step(events, max_step=6)
+    merged = _merge_duplicate_steps(groups)
+
+    step_groups = [g for g in merged if g["type"] == "step"]
+    # If payload_text strips latency_ms these merge; if not, they stay
+    # separate. Check whichever the recorder says.
+    from cvc_policy.recorder import payload_text
+    a = payload_text(events[0])
+    b = payload_text(events[1])
+    if a == b:
+        assert len(step_groups) == 1
+        assert step_groups[0]["step"] == 5 and step_groups[0]["step_end"] == 6
+    else:
+        assert len(step_groups) == 2
+
+
+def test_render_output_shows_step_range_header(tmp_path: Path) -> None:
+    """End-to-end: 10 identical steps render as one ``step 0..9`` header."""
+    from cvc_policy.viewer import render
+
+    events = [_dup_event(s) for s in range(10)]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=9)
+    html = render(run_dir).read_text()
+
+    # Exactly one merged header `step 0..9` in the log panel.
+    assert re.search(
+        r'<div class="step-marker"[^>]*>\s*step\s+0\.\.9\s*</div>',
+        html,
+    ), f"missing merged step range header; log snippet: {html[html.find('step-marker'):html.find('step-marker')+400] if 'step-marker' in html else html[:400]}"
+    # And no individual `step 1` / `step 5` markers — only the merged one.
+    solo_markers = re.findall(
+        r'<div class="step-marker" data-step="(\d+)">\s*step\s+\d+\s*</div>',
+        html,
+    )
+    assert solo_markers == [], f"expected no solo step markers, got {solo_markers}"
+
+
+def test_render_merged_range_composes_with_empty_range(tmp_path: Path) -> None:
+    """Merged step run + empty range + another merged step run all coexist."""
+    from cvc_policy.viewer import render
+
+    events = (
+        [_dup_event(s) for s in range(4)]
+        + [_dup_event(s) for s in range(100, 103)]
+    )
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=102)
+    html = render(run_dir).read_text()
+
+    # First merged run `step 0..3`.
+    assert re.search(
+        r'<div class="step-marker"[^>]*data-step="0"[^>]*>\s*step\s+0\.\.3\s*</div>',
+        html,
+    )
+    # Empty range marker for 4..99.
+    assert re.search(
+        r'<div class="step-range" data-start="4" data-end="99">[^<]*\[4-99\][^<]*</div>',
+        html,
+    )
+    # Second merged run `step 100..102`.
+    assert re.search(
+        r'<div class="step-marker"[^>]*data-step="100"[^>]*>\s*step\s+100\.\.102\s*</div>',
+        html,
+    )

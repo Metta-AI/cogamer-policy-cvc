@@ -188,7 +188,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       {% if g.type == "range" %}
       <div class="step-range" data-start="{{ g.start }}" data-end="{{ g.end }}">[{{ g.start }}-{{ g.end }}]</div>
       {% else %}
+      {% if g.step_end is not none and g.step_end > g.step %}
+      <div class="step-marker" data-step="{{ g.step }}" data-step-end="{{ g.step_end }}">step {{ g.step }}..{{ g.step_end }}</div>
+      {% else %}
       <div class="step-marker" data-step="{{ g.step }}">step {{ g.step }}</div>
+      {% endif %}
       {% for ln in g.lines %}
       <div class="line" data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"

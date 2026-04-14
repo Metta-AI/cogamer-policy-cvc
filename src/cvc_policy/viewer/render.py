@@ -121,6 +121,61 @@ def _group_by_step(
     return groups
 
 
+def _merge_duplicate_steps(
+    groups: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Collapse adjacent ``step`` groups that each hold exactly one
+    equivalent event into a single ``step`` group with ``step_end`` set.
+
+    Equivalence key: ``(agent, stream, type, payload_text(event))`` —
+    rendered payload text, not the raw dict, so volatile fields formatted
+    by the payload renderer compare structurally.
+
+    ``range`` groups (empty-step runs) block merging: the two sides of a
+    range are never fused.
+    """
+    def _key(e: dict[str, Any]) -> tuple[Any, Any, Any, str]:
+        return (e.get("agent"), e.get("stream"), e["type"], payload_text(e))
+
+    out: list[dict[str, Any]] = []
+    i = 0
+    n = len(groups)
+    while i < n:
+        g = groups[i]
+        if (
+            g["type"] == "step"
+            and len(g["events"]) == 1
+        ):
+            start = g["step"]
+            end = start
+            k = _key(g["events"][0])
+            j = i + 1
+            while j < n:
+                h = groups[j]
+                if h["type"] != "step":
+                    break
+                if len(h["events"]) != 1:
+                    break
+                if h["step"] != end + 1:
+                    break
+                if _key(h["events"][0]) != k:
+                    break
+                end = h["step"]
+                j += 1
+            merged = {
+                "type": "step",
+                "step": start,
+                "step_end": end,
+                "events": [g["events"][0]],
+            }
+            out.append(merged)
+            i = j
+            continue
+        out.append(g)
+        i += 1
+    return out
+
+
 def _agent_ids(events: list[dict[str, Any]], cogs: int) -> list[int]:
     seen = {e["agent"] for e in events if e.get("agent") is not None}
     ids = sorted(int(a) for a in seen)
@@ -164,7 +219,7 @@ def render(run_dir: Path) -> Path:
     # Stable event-to-index map so `data-idx` matches the embedded
     # events JSON across all downstream consumers (scrubber, filters).
     idx_of = {id(e): i for i, e in enumerate(events)}
-    raw_groups = _group_by_step(events, max_step)
+    raw_groups = _merge_duplicate_steps(_group_by_step(events, max_step))
     log_groups: list[dict[str, Any]] = []
     for g in raw_groups:
         if g["type"] == "range":
@@ -173,6 +228,7 @@ def render(run_dir: Path) -> Path:
             log_groups.append({
                 "type": "step",
                 "step": g["step"],
+                "step_end": g.get("step_end"),
                 "lines": [_as_line(idx_of[id(e)], e) for e in g["events"]],
             })
 
