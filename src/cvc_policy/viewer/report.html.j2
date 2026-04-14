@@ -121,12 +121,12 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   font-size: 10px; font-weight: 600; margin-right: 4px; vertical-align: middle; }
 #log .type { color: var(--muted); margin-right: 4px; }
 #log .role-icon { margin-right: 4px; font-size: 0.9em; }
-.inventory-panel { display: flex; flex-wrap: wrap; gap: 4px 10px;
+.inventory-panel { display: flex; flex-direction: column; gap: 2px;
   padding: 6px 4px; margin-bottom: 6px;
   border-bottom: 1px solid var(--border); font-size: 12px; }
-.inventory-panel .inv-row { display: flex; align-items: center; gap: 6px;
-  flex: 1 1 30%; min-width: 200px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inventory-panel .inv-row { display: flex; align-items: center; gap: 8px;
+  padding: 2px 4px; border-radius: 3px;
+  white-space: nowrap; overflow: hidden; }
 .inventory-panel .inv-agent { font-weight: 700; }
 .inventory-panel .inv-role { display: inline-flex; gap: 2px;
   align-items: center; }
@@ -137,10 +137,24 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 .inventory-panel .inv-row.stale { opacity: 0.4; }
 .inventory-panel .inv-row.active { outline: 1px solid var(--accent);
   border-radius: 4px; }
+.inventory-panel .agent-eye { background: transparent; border: 0;
+  cursor: pointer; color: var(--fg); padding: 0 2px; font-size: 13px;
+  user-select: none; }
+.inventory-panel .agent-eye.hidden-eye { opacity: 0.25;
+  text-decoration: line-through; }
 .inventory-panel .inv-badge { display: inline-flex; align-items: center;
   gap: 2px; padding: 1px 4px; border-radius: 3px;
-  background: var(--panel2); cursor: help; font-size: 12px; }
+  background: var(--panel2); cursor: help; font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.inventory-panel .inv-badge .inv-icon { font-weight: 700; opacity: 0.7; }
 .inventory-panel .inv-badge .inv-count { font-weight: 600; }
+.inventory-panel .inv-bar { display: inline-flex; gap: 1px;
+  align-items: center; padding: 2px 4px; border-radius: 3px;
+  background: var(--panel2); cursor: help; }
+.inventory-panel .inv-bar .seg { width: 5px; height: 10px;
+  background: #334155; border-radius: 1px; }
+.inventory-panel .inv-bar.hp .seg.filled { background: #10b981; }
+.inventory-panel .inv-bar.energy .seg.filled { background: #facc15; }
 #log hr.step-sep { border: 0; border-top: 1px solid var(--border);
   margin: 4px 0; height: 0; }
 #log .step-marker { color: var(--muted); font-size: 10px;
@@ -246,6 +260,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     <div id="inventory-panel" class="inventory-panel">
       {% for a in agents %}
       <div class="inv-row" data-agent="{{ a }}">
+        <button type="button" class="agent-eye" data-agent="{{ a }}"
+          title="click: toggle in log | dblclick: solo / show-all">&#x1F441;</button>
         <span class="inv-agent" style="color: {{ agent_color(a) }}">a{{ a }}</span>
         <span class="inv-role"></span>
         <span class="inv-hp"></span>
@@ -289,20 +305,20 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     document.getElementById('inventory-by-agent-step').textContent);
   var maxStep = {{ max_step }};
 
-  // Icons for compact inventory rendering. Hover shows the text name.
+  // Compact per-resource glyphs. Hover shows the full name.
   var INV_ICONS = {
-    hp: "\u2665",            // heart suit (vitality)
-    heart: "\ud83d\udc96",   // sparkling heart (gear)
-    carbon: "\u25cf",        // black circle
-    oxygen: "\u25cb",        // white circle
-    germanium: "\u25c6",     // black diamond
-    silicon: "\u25a0",       // black square
+    carbon: 'c',
+    oxygen: 'o',
+    germanium: 'g',
+    silicon: 's',
+    heart: '<3',
     miner: "\u26cf",
     aligner: "\ud83d\udd17",
     scrambler: "\ud83c\udf00",
     scout: "\ud83d\udd2d"
   };
   var INV_CARGO_KEYS = ['carbon', 'oxygen', 'germanium', 'silicon', 'heart'];
+  var INV_MAX = {hp: 100, energy: 100};
 
   function _findLatestHeartbeat(agent, step) {
     var entries = inventoryByAgentStep[String(agent)];
@@ -323,8 +339,20 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   function _invBadge(key, count, label) {
     var icon = INV_ICONS[key] || key;
     var text = (label || key) + ': ' + count;
-    return '<span class="inv-badge" title="' + text + '">' + icon +
+    return '<span class="inv-badge" title="' + text + '">' +
+           '<span class="inv-icon">' + icon + '</span>' +
            '<span class="inv-count">' + count + '</span></span>';
+  }
+  function _invBar(key, count) {
+    var max = INV_MAX[key] || 100;
+    var segs = 10;
+    var filled = Math.max(0, Math.min(segs, Math.round(count / max * segs)));
+    var html = '';
+    for (var i = 0; i < segs; i++) {
+      html += '<span class="seg' + (i < filled ? ' filled' : '') + '"></span>';
+    }
+    return '<span class="inv-bar ' + key + '" title="' + key + ': ' + count +
+           '/' + max + '">' + html + '</span>';
   }
   function updateInventoryPanel(step) {
     var panel = document.getElementById('inventory-panel');
@@ -352,8 +380,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
           : '';
       }
       if (hpEl) {
-        hpEl.innerHTML = (p.hp !== undefined)
-          ? _invBadge('hp', p.hp, 'hp') : '';
+        var inv = p.inventory || {};
+        var pieces = [];
+        if (p.hp !== undefined) pieces.push(_invBar('hp', p.hp));
+        if (inv.energy !== undefined) pieces.push(_invBar('energy', inv.energy));
+        hpEl.innerHTML = pieces.join('');
       }
       var inv = p.inventory || {};
       var parts = [];
@@ -619,6 +650,50 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   document.querySelectorAll('.agent-toggle').forEach(function (cb) {
     cb.addEventListener('change', function () {
       hiddenAgents[cb.dataset.agent] = !cb.checked;
+      _syncAgentEyes();
+      applyFilters();
+    });
+  });
+
+  function _syncAgentEyes() {
+    document.querySelectorAll('.agent-eye').forEach(function (btn) {
+      var a = btn.dataset.agent;
+      btn.classList.toggle('hidden-eye', !!hiddenAgents[a]);
+    });
+    document.querySelectorAll('.agent-toggle').forEach(function (cb) {
+      cb.checked = !hiddenAgents[cb.dataset.agent];
+    });
+  }
+  function _setAgentHidden(a, hidden) {
+    hiddenAgents[a] = hidden;
+  }
+  document.querySelectorAll('.agent-eye').forEach(function (btn) {
+    var a = btn.dataset.agent;
+    btn.addEventListener('click', function (ev) {
+      if (btn._dblTimer) { clearTimeout(btn._dblTimer); btn._dblTimer = null; }
+      // Defer single-click a hair so a double-click can cancel it.
+      btn._dblTimer = setTimeout(function () {
+        btn._dblTimer = null;
+        _setAgentHidden(a, !hiddenAgents[a]);
+        _syncAgentEyes();
+        applyFilters();
+      }, 180);
+    });
+    btn.addEventListener('dblclick', function (ev) {
+      if (btn._dblTimer) { clearTimeout(btn._dblTimer); btn._dblTimer = null; }
+      // Solo toggle: if only this agent is visible, show all; else solo it.
+      var allAgents = Array.prototype.slice.call(
+        document.querySelectorAll('.agent-eye')
+      ).map(function (b) { return b.dataset.agent; });
+      var isOnlyVisible = allAgents.every(function (x) {
+        return x === a ? !hiddenAgents[x] : !!hiddenAgents[x];
+      });
+      if (isOnlyVisible) {
+        allAgents.forEach(function (x) { _setAgentHidden(x, false); });
+      } else {
+        allAgents.forEach(function (x) { _setAgentHidden(x, x !== a); });
+      }
+      _syncAgentEyes();
       applyFilters();
     });
   });

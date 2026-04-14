@@ -189,29 +189,17 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             if state.worker is not None:
                 _log(state.log_queue, {"kind": "heartbeat", **snapshot})
 
-        # Surface this tick's events (for this agent) via policyInfos so
-        # mettagrid persists them in the replay. Also include team/global
-        # events (agent=None) so they appear on every agent's stream.
-        tick_events = [
-            e
-            for e in self._recorder.events_for_step(gs.step_index)
-            if e["agent"] == self._agent_id or e["agent"] is None
-        ]
-        summary_lines = [fmt(e) for e in tick_events]
-        infos: dict[str, Any] = {
-            "events": tick_events,
-            "summary": "\n".join(summary_lines),
-            "role": gs.role,
-            "summary_action": summary,
-        }
-        # Mettascope reads policy_info.target as a relative [row, col] offset
-        # from the agent's position and highlights that cell on the map.
+        # Policy-info passed to mettascope. Mettascope's policy-info panel
+        # displays every non-`__` key and recognises a relative
+        # `target: [row, col]` offset to highlight on the map. Keep the
+        # surface minimal — the diagnostic viewer reads events from
+        # `events.json` directly, so we don't need to stuff them here.
+        infos: dict[str, Any] = {"role": gs.role, "summary": summary}
         agent_pos_for_target = getattr(gs, "position", None)
         if target_kind and target_pos is not None and agent_pos_for_target is not None:
             dx = int(target_pos[0]) - int(agent_pos_for_target[0])
             dy = int(target_pos[1]) - int(agent_pos_for_target[1])
             infos["target"] = [dy, dx]
-            infos["target_kind"] = target_kind
         self._infos = infos
 
         return action, state

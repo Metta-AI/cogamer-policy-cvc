@@ -134,26 +134,27 @@ def test_heartbeat_every_200_steps():
     assert {hb["step"] for hb in heartbeats} == {200, 400}
 
 
-def test_policyinfos_contains_this_tick_events():
+def test_policyinfos_carries_role_and_summary():
     impl, state = _make_impl()
     impl.step_with_state(object(), state)
-    assert "events" in impl._infos
-    # Exactly this agent's action event this tick should be in the infos.
-    types = [e["type"] for e in impl._infos["events"]]
+    # Minimal mettascope-compatible policy_info: role + summary.
+    assert impl._infos.get("role") == "miner"
+    assert "summary" in impl._infos
+    # Events still appear in the recorder (and events.json), not in infos.
+    types = [e["type"] for e in impl._recorder.events]
     assert "action" in types
-    for e in impl._infos["events"]:
-        assert e["agent"] == 0
-        assert e["step"] == 1
 
 
-def test_policyinfos_isolates_events_across_agents():
-    # Two impls sharing the same recorder — events tagged by agent.
+def test_policyinfos_does_not_leak_across_agents():
+    # Two impls sharing the same recorder — each agent's `_infos` reflects
+    # only that agent's tick-local policy state (role + summary), never
+    # the other agent's data.
     recorder = EventRecorder()
-    def mkimpl(aid):
+    def mkimpl(aid, role):
         programs = {
-            "desired_role": Program(executor="code", fn=lambda gs: "miner"),
+            "desired_role": Program(executor="code", fn=lambda gs: role),
             "step": Program(executor="code", fn=lambda gs: (Action("noop"), f"sum{aid}")),
-            "summarize": Program(executor="code", fn=lambda gs: {"role": "miner"}),
+            "summarize": Program(executor="code", fn=lambda gs: {"role": role}),
         }
         return CvCPolicyImpl(
             _fake_policy_env_info(),
@@ -163,14 +164,13 @@ def test_policyinfos_isolates_events_across_agents():
             recorder=recorder,
         )
 
-    impl0 = mkimpl(0)
-    impl1 = mkimpl(1)
+    impl0 = mkimpl(0, "miner")
+    impl1 = mkimpl(1, "aligner")
     s0 = CvCAgentState(game_state=_StubGameState())  # type: ignore[arg-type]
     s1 = CvCAgentState(game_state=_StubGameState())  # type: ignore[arg-type]
     impl0.step_with_state(object(), s0)
     impl1.step_with_state(object(), s1)
-    # agent 0's infos should have only its own events.
-    for e in impl0._infos["events"]:
-        assert e["agent"] == 0
-    for e in impl1._infos["events"]:
-        assert e["agent"] == 1
+    assert impl0._infos["role"] == "miner"
+    assert impl0._infos["summary"] == "sum0"
+    assert impl1._infos["role"] == "aligner"
+    assert impl1._infos["summary"] == "sum1"
