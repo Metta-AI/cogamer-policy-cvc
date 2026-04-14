@@ -7,7 +7,7 @@ GameState methods which delegate to the engine's working infrastructure.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from cvc_policy.agent import (
     KnownEntity,
@@ -46,11 +46,13 @@ class GameState:
         policy_env_info: PolicyEnvInterface,
         *,
         agent_id: int,
+        on_cargo_cap_discovery: Callable[[tuple[str, ...], int], None] | None = None,
     ) -> None:
         self.engine = CogletAgentPolicy(
             policy_env_info,
             agent_id=agent_id,
             world_model=WorldModel(),
+            on_cargo_cap_discovery=on_cargo_cap_discovery,
         )
         self.agent_id = agent_id
         self.role: str = "miner"

@@ -8,8 +8,10 @@ Extends CvcEngine with:
 
 from __future__ import annotations
 
+from typing import Callable
+
 from cvc_policy.agent import KnownEntity, absolute_position, manhattan
-from cvc_policy.agent.cargo_cap import CargoCapTracker
+from cvc_policy.agent.cargo_cap import CargoCapTracker, GearSig
 from cvc_policy.agent.main import CvcEngine
 from mettagrid.sdk.agent import MacroDirective, MettagridState
 
@@ -37,12 +39,17 @@ class CogletAgentPolicy(CvcEngine):
     - Extra retreat safety for miners far from hub
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        on_cargo_cap_discovery: Callable[[GearSig, int], None] | None = None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         # Set by CogletPolicyImpl when LLM provides guidance
         self._llm_resource_bias: str | None = None
         # Discovered cargo caps, indexed by gear signature.
-        self._cargo_cap = CargoCapTracker()
+        self._cargo_cap = CargoCapTracker(on_discovery=on_cargo_cap_discovery)
         self._prev_summary_was_mine: bool = False
 
     def _macro_directive(self, state: MettagridState) -> MacroDirective:

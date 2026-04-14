@@ -189,3 +189,22 @@ def test_discovery_callback_not_refired_on_same_cap():
     for i, c in enumerate([0, 10, 20, 30, 40, 40, 40]):
         tracker.observe(gear_sig=("miner",), cargo=c, mined_last_tick=i > 0)
     assert seen == [(("miner",), 40)]
+
+
+def test_game_state_forwards_on_cargo_cap_discovery():
+    """GameState should plumb on_cargo_cap_discovery into the CargoCapTracker."""
+    from cvc_policy.game_state import GameState
+    from tests.conftest import _fake_policy_env_info
+
+    seen: list[tuple[tuple[str, ...], int]] = []
+    gs = GameState(
+        _fake_policy_env_info(),
+        agent_id=0,
+        on_cargo_cap_discovery=lambda sig, cap: seen.append((sig, cap)),
+    )
+    # Drive the tracker directly via the engine attribute — proves plumbing.
+    for i, c in enumerate([0, 10, 20, 30, 40, 40]):
+        gs.engine._cargo_cap.observe(
+            gear_sig=("miner",), cargo=c, mined_last_tick=i > 0
+        )
+    assert seen == [(("miner",), 40)]
