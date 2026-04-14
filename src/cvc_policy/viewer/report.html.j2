@@ -199,12 +199,15 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         </label>
         {% endfor %}
       </div>
-    </div>
-    <div class="tabs" id="tabs">
-      <button type="button" class="tab active" data-tab="all">All</button>
-      <button type="button" class="tab" data-tab="py">Py</button>
-      <button type="button" class="tab" data-tab="llm">LLM</button>
-      <button type="button" class="tab" data-tab="team">Team</button>
+      <div class="row">
+        <span class="group-label">Stream</span>
+        <div class="tabs" id="tabs">
+          <button type="button" class="tab active" data-tab="all">All</button>
+          <button type="button" class="tab" data-tab="py">Py</button>
+          <button type="button" class="tab" data-tab="llm">LLM</button>
+          <button type="button" class="tab" data-tab="team">Team</button>
+        </div>
+      </div>
     </div>
     <div id="log">
       {% for g in log_groups %}
