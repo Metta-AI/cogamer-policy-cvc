@@ -23,6 +23,7 @@ from mettagrid.runner.rollout import resolve_env_for_seed, single_episode_rollou
 
 from cvc_policy.scenarios import Scenario
 from cvc_policy.scenarios._run import Run
+from cvc_policy.viewer.render import render as render_report
 
 
 def _build_machina_1(cogs: int | None) -> Any:
@@ -204,6 +205,10 @@ def run_scenario(
         steps=steps_run,
         status=status,
     )
+    # Auto-render the HTML report so users don't need a separate `cgp view`
+    # step. result.json is already on disk, so a render crash doesn't lose
+    # assertion results — we let it propagate (no try/except masking).
+    render_report(run_dir)
     # Re-load Run so callers see the freshly-written result.json.
     return Run(run_dir)
 

@@ -109,6 +109,32 @@ def test_scenario_run_invokes_harness(tmp_path, monkeypatch) -> None:
     assert "passed" in result.output.lower()
 
 
+def test_scenario_run_prints_report_html_path(tmp_path, monkeypatch) -> None:
+    """`cgp scenario run <name>` prints the path to report.html so the
+    user can open it without a separate `cgp view` step."""
+    import cvc_policy.scenarios.cases.smoke  # noqa: F401
+    from cvc_policy.scenarios._run import Run
+    import cvc_policy.cli as cli_mod
+
+    def fake_run_scenario(scenario, **kwargs):
+        run_dir = kwargs["runs_root"] / "fake-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "events.json").write_text("[]")
+        (run_dir / "result.json").write_text(
+            '{"run_id": "fake-run", "status": "passed", "assertions": []}'
+        )
+        # Harness auto-renders report.html; the fake mirrors that.
+        (run_dir / "report.html").write_text("<html></html>")
+        return Run(run_dir)
+
+    monkeypatch.setattr(cli_mod, "run_scenario", fake_run_scenario)
+    result = CliRunner().invoke(
+        app, ["scenario", "run", "smoke_machina1_runs", "--runs-root", str(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "report.html" in result.output
+
+
 def test_scenario_run_unknown_name_exits_nonzero(tmp_path) -> None:
     result = CliRunner().invoke(
         app, ["scenario", "run", "no_such_scenario", "--runs-root", str(tmp_path)]

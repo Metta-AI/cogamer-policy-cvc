@@ -87,6 +87,9 @@ def scenario_run(
     for a in run.result.get("assertions", []):
         mark = "PASS" if a["passed"] else "FAIL"
         typer.echo(f"  [{mark}] {a['name']}: {a['message']}")
+    report = run.run_dir / "report.html"
+    if report.exists():
+        typer.echo(f"report: {report.resolve()}")
     if status != "passed":
         raise typer.Exit(code=1)
 

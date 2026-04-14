@@ -177,3 +177,40 @@ def test_run_scenario_rejects_unknown_policy_kwargs(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="unknown CvCPolicy kwarg"):
         run_scenario(s, runs_root=tmp_path)
+
+
+def test_run_scenario_renders_report_html(tmp_path: Path) -> None:
+    """After `run_scenario`, a non-empty report.html lands in the run folder."""
+    s = Scenario(
+        name="render_test", tier=0, mission="machina_1", cogs=2, steps=3,
+        assertions=[lambda run: AssertResult(name="dummy", passed=True)],
+    )
+    with patch("cvc_policy.scenarios.harness._drive_rollout", side_effect=_stub_drive):
+        run = run_scenario(s, runs_root=tmp_path)
+    report = run.run_dir / "report.html"
+    assert report.exists()
+    assert report.stat().st_size > 0
+
+
+def test_run_scenario_propagates_render_failure(tmp_path: Path) -> None:
+    """If `render()` raises, let the error surface — don't mask it."""
+    s = Scenario(
+        name="render_crash", tier=0, mission="machina_1", cogs=1, steps=3,
+        assertions=[lambda run: AssertResult(name="dummy", passed=True)],
+    )
+
+    class _Boom(RuntimeError):
+        pass
+
+    def _boom(_run_dir: Path) -> Path:
+        raise _Boom("render exploded")
+
+    with patch("cvc_policy.scenarios.harness._drive_rollout", side_effect=_stub_drive):
+        with patch("cvc_policy.scenarios.harness.render_report", side_effect=_boom):
+            with pytest.raises(_Boom):
+                run_scenario(s, runs_root=tmp_path)
+    # result.json was still written before the render step.
+    # Find the single run dir that was created.
+    run_dirs = [p for p in tmp_path.iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1
+    assert (run_dirs[0] / "result.json").exists()
