@@ -101,6 +101,42 @@ def test_report_main_has_two_columns(tmp_path: Path) -> None:
     assert len([t for t in cols.split() if t]) == 2, f"expected 2 columns, got: {cols}"
 
 
+def test_report_layout_fills_viewport_height(tmp_path: Path) -> None:
+    """Body/main/section use flex column + grow so the page fills the
+    viewport vertically and regressions to fixed heights fail tests."""
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "r", cogs=2)
+    html = render(run_dir).read_text()
+
+    # html, body must stretch to full viewport height.
+    assert re.search(r"html,\s*body\s*\{[^}]*height:\s*100%", html), (
+        "expected `html, body { height: 100% }` rule"
+    )
+    # body is a flex column so header/main/footer stack vertically.
+    assert re.search(
+        r"body\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column",
+        html,
+    ), "expected body to be a flex column"
+    # main must grow to fill remaining space.
+    assert re.search(r"main\s*\{[^}]*flex:\s*1", html), (
+        "expected `main { ... flex: 1 ... }` so it fills remaining height"
+    )
+    # section must be a flex column (so iframe / #log can grow inside).
+    assert re.search(
+        r"section\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column",
+        html,
+    ), "expected section to be a flex column"
+    # iframe grows inside replay section.
+    assert re.search(r"\.replay-card iframe\s*\{[^}]*flex:\s*1", html), (
+        "expected replay iframe to grow via flex: 1"
+    )
+    # #log grows inside log section instead of a fixed max-height.
+    assert re.search(r"#log\s*\{[^}]*flex:\s*1", html), (
+        "expected #log to grow via flex: 1"
+    )
+
+
 def test_report_embeds_events_json_blob(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
