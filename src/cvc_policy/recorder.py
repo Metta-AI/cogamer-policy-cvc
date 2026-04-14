@@ -7,7 +7,10 @@ LogConfig.
 
 from __future__ import annotations
 
-from typing import Any
+import json
+import sys
+from pathlib import Path
+from typing import Any, Iterable
 
 
 def _fmt_value(v: Any) -> str:
@@ -53,9 +56,16 @@ def fmt(event: dict[str, Any]) -> str:
 
 
 class EventRecorder:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        stderr_streams: Iterable[str] | None = None,
+        record_dir: str | None = None,
+    ) -> None:
         self._step = 0
         self.events: list[dict[str, Any]] = []
+        self._stderr_streams: frozenset[str] = frozenset(stderr_streams or ())
+        self._record_dir = record_dir
 
     def set_step(self, step: int) -> None:
         self._step = step
@@ -68,12 +78,26 @@ class EventRecorder:
         stream: str,
         payload: dict[str, Any],
     ) -> None:
-        self.events.append(
-            {
-                "step": self._step,
-                "agent": agent,
-                "stream": stream,
-                "type": type,
-                "payload": dict(payload),
-            }
-        )
+        ev = {
+            "step": self._step,
+            "agent": agent,
+            "stream": stream,
+            "type": type,
+            "payload": dict(payload),
+        }
+        self.events.append(ev)
+        if stream in self._stderr_streams:
+            print(fmt(ev), file=sys.stderr, flush=True)
+
+    def events_for_step(
+        self, step: int, *, agent: int | None = None
+    ) -> list[dict[str, Any]]:
+        out = [e for e in self.events if e["step"] == step]
+        if agent is not None:
+            out = [e for e in out if e["agent"] == agent]
+        return out
+
+    def flush_json(self, path: str | Path) -> None:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(self.events, default=str))

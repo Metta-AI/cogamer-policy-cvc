@@ -58,3 +58,43 @@ def test_fmt_patch_applied_shows_applied_fields():
     s = fmt(ev)
     assert s.startswith("[llm] a2 step=500 patch_applied")
     assert "resource_bias=carbon" in s
+
+
+def test_stderr_sink_filters_by_stream(capsys):
+    rec = EventRecorder(stderr_streams={"py"})
+    rec.emit(type="action", agent=0, stream="py", payload={"role": "miner"})
+    rec.emit(type="llm_tool_call", agent=0, stream="llm", payload={"tool": "patch"})
+    err = capsys.readouterr().err.splitlines()
+    assert any(line.startswith("[py]") for line in err)
+    assert not any(line.startswith("[llm]") for line in err)
+
+
+def test_flush_to_json(tmp_path):
+    import json
+
+    rec = EventRecorder()
+    rec.emit(type="action", agent=0, stream="py", payload={})
+    rec.flush_json(tmp_path / "events.json")
+    data = json.loads((tmp_path / "events.json").read_text())
+    assert len(data) == 1
+    assert data[0]["type"] == "action"
+
+
+def test_per_step_drain_returns_events_for_current_step():
+    rec = EventRecorder()
+    rec.set_step(5)
+    rec.emit(type="action", agent=0, stream="py", payload={})
+    rec.emit(type="role_change", agent=1, stream="py", payload={})
+    rec.set_step(6)
+    rec.emit(type="action", agent=0, stream="py", payload={})
+    events_at_5 = rec.events_for_step(5)
+    assert len(events_at_5) == 2
+
+
+def test_events_for_step_with_agent_filter():
+    rec = EventRecorder()
+    rec.set_step(3)
+    rec.emit(type="action", agent=0, stream="py", payload={})
+    rec.emit(type="action", agent=1, stream="py", payload={})
+    assert len(rec.events_for_step(3, agent=0)) == 1
+    assert rec.events_for_step(3, agent=0)[0]["agent"] == 0
