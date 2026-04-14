@@ -140,7 +140,7 @@ def render(run_dir: Path) -> Path:
         "failed": failed,
         "assertions": result.get("assertions", []),
         "has_replay": has_replay,
-        "replay_rel": f"runs/{run_dir.name}/replay.json.z",
+        "replay_rel": str(run_dir.resolve() / "replay.json.z"),
     }
 
     env = _env()

@@ -210,6 +210,22 @@ def test_render_escapes_assertion_message(tmp_path: Path) -> None:
     assert "&lt;script&gt;alert(" in html
 
 
+def test_report_replay_kbd_is_absolute_path(tmp_path: Path) -> None:
+    from cvc_policy.viewer import render
+
+    run_dir = _write_fake_run(tmp_path / "my-run")
+    (run_dir / "replay.json.z").write_bytes(b"fake")
+    html = render(run_dir).read_text()
+    m = re.search(r'<kbd id="replay-cmd">([^<]+)</kbd>', html)
+    assert m is not None
+    text = m.group(1)
+    assert text.startswith("softmax cogames replay ")
+    path_part = text[len("softmax cogames replay "):].strip()
+    assert Path(path_part).is_absolute()
+    assert Path(path_part).exists()
+    assert "replay.json.z" in path_part
+
+
 def test_cgp_view_invokes_webbrowser_with_existing_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
