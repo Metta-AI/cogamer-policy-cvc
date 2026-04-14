@@ -96,21 +96,28 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .step-marker.merged-hidden { display: none; }
 #log .step-marker.hidden { display: none; }
 #log hr.step-sep.hr-hidden { display: none; }
-/* Reserve a fixed left column on every .line so step labels and
-   range badges both sit in a consistent column. */
-#log .line { padding-left: 66px; position: relative; }
+/* Left column: step number (vertical) on the first line of a step
+   block, merge-range badge on merged runs, or empty on follow-up
+   lines. Column is compact so the content gets more horizontal room. */
+#log .line { padding-left: 28px; position: relative; }
 #log .line.step-start[data-step-label]::before {
   content: attr(data-step-label);
-  position: absolute; left: 0; top: 2px;
-  width: 58px; color: var(--muted); opacity: 0.55;
-  font-size: 0.85em; letter-spacing: 0.05em;
-  text-transform: uppercase; text-align: right; }
-#log .step-range-badge { position: absolute; left: 0; top: 2px;
-  width: 58px; color: var(--muted); opacity: 0.7;
-  font-size: 0.85em; font-style: italic; text-align: right;
-  margin-right: 0; }
+  position: absolute; left: 0; top: 0; width: 22px;
+  color: var(--muted); opacity: 0.6;
+  font-size: 10px; letter-spacing: 0.05em;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  text-align: left; padding: 1px 0; }
+#log .step-range-badge { position: absolute; left: 0; top: 0;
+  width: 22px; color: var(--muted); opacity: 0.7;
+  font-size: 9px; font-style: italic; text-align: left;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  padding: 1px 0; margin-right: 0; }
 #log .line.in-merged-run::before { content: none; }
-#log .step-marker { padding-left: 66px; }
+#log .step-marker { padding-left: 28px; }
+/* Follow-up events within the same step that share the agent — the
+   agent/role glyphs are suppressed, content sits in the content column. */
+#log .line.agent-dupe .type::before { content: '\21B3\2002'; /* ↳ */
+  opacity: 0.35; margin-right: 2px; }
 #log .line { cursor: pointer; }
 #log .step-marker { cursor: pointer; }
 #log .line .meta { color: var(--muted); }
@@ -279,13 +286,13 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
          first line of each step rather than a standalone horizontal row. #}
       {% if g.lines %}
       {% for ln in g.lines %}
-      <div class="line{% if loop.first %} step-start{% endif %}"
+      <div class="line{% if loop.first %} step-start{% endif %}{% if ln.hide_agent %} agent-dupe{% endif %}"
            data-idx="{{ ln.idx }}" data-step="{{ ln.step }}"
            {% if loop.first %}data-step-label="{{ g.step }}"{% endif %}
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"
            data-stream="{{ ln.stream }}"
            data-type="{{ ln.type }}"
-           data-payload="{{ ln.text }}">{% if ln.agent is not none %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}{% if ln.role and role_glyph(ln.role) %}<span class="role-icon" title="{{ ln.role }}">{{ role_glyph(ln.role) }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
+           data-payload="{{ ln.text }}">{% if ln.agent is not none and not ln.hide_agent %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}{% if ln.role and role_glyph(ln.role) and not ln.hide_agent %}<span class="role-icon" title="{{ ln.role }}">{{ role_glyph(ln.role) }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
       {% endfor %}
       {% else %}
       <div class="step-marker" data-step="{{ g.step }}" data-original="step {{ g.step }}">step {{ g.step }}</div>

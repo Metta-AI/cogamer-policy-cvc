@@ -259,13 +259,25 @@ def render(run_dir: Path) -> Path:
     for g in raw_groups:
         if g["type"] == "range":
             log_groups.append(g)
-        else:
-            log_groups.append({
-                "type": "step",
-                "step": g["step"],
-                "step_end": None,
-                "lines": [_as_line(idx_of[id(e)], e) for e in g["events"]],
-            })
+            continue
+        lines: list[dict[str, Any]] = []
+        prev_agent_in_step: Any = object()  # sentinel distinct from None
+        for e in g["events"]:
+            ln = _as_line(idx_of[id(e)], e)
+            # Hide the agent+role glyphs when the preceding line in this
+            # step block has the same agent — the agent column is the
+            # visual "thread" that the follow-up events belong to.
+            ln["hide_agent"] = (
+                ln["agent"] is not None and ln["agent"] == prev_agent_in_step
+            )
+            lines.append(ln)
+            prev_agent_in_step = ln["agent"]
+        log_groups.append({
+            "type": "step",
+            "step": g["step"],
+            "step_end": None,
+            "lines": lines,
+        })
 
     # Pre-compute inventory snapshots per agent for the inventory panel.
     # Any event whose payload carries `inventory` or `hp` contributes
