@@ -174,10 +174,10 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   <section class="log-card">
     <h2>Log
-      <button type="button" id="filters-toggle" class="filters-toggle"
-        aria-expanded="true" title="Show/hide filters">filters</button>
+      <button type="button" id="filters-toggle" class="filters-toggle collapsed"
+        aria-expanded="false" title="Show/hide filters">filters</button>
     </h2>
-    <div class="log-filters" id="log-filters">
+    <div class="log-filters collapsed" id="log-filters">
       <div class="row">
         <input type="search" id="search" placeholder="filter text (across payloads + rationale)">
       </div>
@@ -483,10 +483,10 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     var panel = document.getElementById('log-filters');
     if (!btn || !panel) return;
     var stored = window.localStorage && localStorage.getItem('cgp-filters-collapsed');
-    if (stored === '1') {
-      panel.classList.add('collapsed');
-      btn.classList.add('collapsed');
-      btn.setAttribute('aria-expanded', 'false');
+    if (stored === '0') {
+      panel.classList.remove('collapsed');
+      btn.classList.remove('collapsed');
+      btn.setAttribute('aria-expanded', 'true');
     }
     btn.addEventListener('click', function () {
       var collapsed = panel.classList.toggle('collapsed');
