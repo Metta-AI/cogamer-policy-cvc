@@ -246,7 +246,7 @@ def test_cgp_view_rejects_path_traversal(tmp_path: Path) -> None:
     assert "traversal" in combined.lower() or "outside" in combined.lower()
 
 
-def test_cgp_view_invokes_webbrowser_with_existing_path(
+def test_cgp_view_no_server_opens_file_url(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from typer.testing import CliRunner
@@ -254,7 +254,7 @@ def test_cgp_view_invokes_webbrowser_with_existing_path(
     from cvc_policy.cli import app
 
     runs_root = tmp_path / "runs"
-    run_dir = _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
+    _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
 
     opened: list[str] = []
     monkeypatch.setattr(
@@ -262,14 +262,95 @@ def test_cgp_view_invokes_webbrowser_with_existing_path(
     )
 
     result = CliRunner().invoke(
-        app, ["view", "abc-20260101-000000", "--runs-root", str(runs_root)]
+        app,
+        [
+            "view",
+            "abc-20260101-000000",
+            "--runs-root",
+            str(runs_root),
+            "--no-server",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert len(opened) == 1
     opened_path = opened[0]
-    # Either an absolute path or file:// URL; must point at an existing file.
+    # file:// URL pointing at an existing report.html
+    assert opened_path.startswith("file://") or Path(opened_path).is_absolute()
     path_str = opened_path.replace("file://", "")
     assert Path(path_str).exists()
+    assert path_str.endswith("report.html")
+
+
+def test_cgp_view_with_server_starts_http_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import re as _re
+    import urllib.request
+
+    from typer.testing import CliRunner
+
+    from cvc_policy.cli import app
+
+    runs_root = tmp_path / "runs"
+    _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
+
+    opened: list[str] = []
+    monkeypatch.setattr(
+        "webbrowser.open", lambda url: opened.append(url) or True
+    )
+
+    # Force the blocking loop to exit immediately.
+    def _fake_serve_forever(self):  # type: ignore[no-untyped-def]
+        raise KeyboardInterrupt
+
+    # Patch ThreadingHTTPServer.serve_forever so `cgp view` returns.
+    import http.server
+
+    # The CLI command uses _serve_run helper; by patching serve_forever we let
+    # the command start the server, fire open, then unwind via KeyboardInterrupt.
+    monkeypatch.setattr(
+        http.server.ThreadingHTTPServer,
+        "serve_forever",
+        _fake_serve_forever,
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "view",
+            "abc-20260101-000000",
+            "--runs-root",
+            str(runs_root),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert len(opened) == 1
+    url = opened[0]
+    m = _re.match(r"^http://localhost:(\d+)/report\.html$", url)
+    assert m is not None, f"unexpected url: {url}"
+
+
+def test_serve_run_helper_actually_serves_report(tmp_path: Path) -> None:
+    """The _serve_run helper returns a live server that serves report.html."""
+    import urllib.request
+
+    from cvc_policy.cli import _serve_run
+    from cvc_policy.viewer import render
+
+    runs_root = tmp_path / "runs"
+    run_dir = _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
+    render(run_dir)
+
+    httpd, port = _serve_run(run_dir)
+    try:
+        with urllib.request.urlopen(
+            f"http://localhost:{port}/report.html", timeout=5
+        ) as resp:
+            body = resp.read().decode("utf-8")
+        assert "abc" in body
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 def test_cgp_runs_lists_most_recent_first(

@@ -124,13 +124,46 @@ def _replace_seed(scenario_obj, seed: int):
     return dataclasses.replace(scenario_obj, seed=seed)
 
 
+def _serve_run(run_dir: Path):
+    """Start a ThreadingHTTPServer serving `run_dir` on an OS-picked port.
+
+    Returns `(httpd, port)`. Caller is responsible for `httpd.shutdown()`
+    and `httpd.server_close()`. The serving thread is a daemon so it
+    won't keep the process alive on its own.
+    """
+    import functools
+    import http.server
+    import threading
+
+    directory = str(Path(run_dir).resolve())
+    handler_cls = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=directory
+    )
+    httpd = http.server.ThreadingHTTPServer(("localhost", 0), handler_cls)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    return httpd, port
+
+
 @app.command("view")
 def view(
     run: str = typer.Argument(..., help="Run id (under --runs-root) or path."),
     runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
     no_open: bool = typer.Option(False, "--no-open", help="Do not launch browser."),
+    no_server: bool = typer.Option(
+        False,
+        "--no-server",
+        help="Do not start local HTTP server; open report.html via file://.",
+    ),
 ) -> None:
-    """Render and open the HTML report for a run."""
+    """Render and open the HTML report for a run.
+
+    By default, starts a small local HTTP server rooted at the run
+    directory so the embedded mettascope iframe can fetch
+    `replay.json.z` over HTTP. Use `--no-server` to open the report via
+    `file://` instead (iframe won't work cross-origin).
+    """
     import webbrowser
 
     from cvc_policy.viewer import render
@@ -155,8 +188,34 @@ def view(
         raise typer.Exit(code=2)
     out = render(run_dir)
     typer.echo(f"wrote {out}")
-    if not no_open:  # pragma: no cover - launches a real browser
-        webbrowser.open(str(out.resolve()))
+
+    if no_server:
+        if not no_open:  # pragma: no cover - launches a real browser
+            webbrowser.open("file://" + str(out.resolve()))
+        return
+
+    # Start the server directly on this thread (blocking) so Ctrl-C
+    # aborts cleanly. Tests patch `serve_forever` to raise
+    # KeyboardInterrupt, so the block below unwinds immediately.
+    import functools
+    import http.server
+
+    directory = str(run_dir.resolve())
+    handler_cls = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=directory
+    )
+    httpd = http.server.ThreadingHTTPServer(("localhost", 0), handler_cls)
+    port = httpd.server_address[1]
+    url = f"http://localhost:{port}/report.html"
+    typer.echo(f"serving {run_dir} at {url}  (Ctrl-C to stop)")
+    if not no_open:
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
 
 
 @app.command("runs")
