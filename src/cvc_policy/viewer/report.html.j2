@@ -96,11 +96,16 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .step-marker.merged-hidden { display: none; }
 #log .step-marker.hidden { display: none; }
 #log hr.step-sep.hr-hidden { display: none; }
-#log .line.in-merged-run { padding-left: 66px; position: relative; }
+/* Reserve a fixed left column on every .line so merged-range badges
+   align the content column consistently across merged and non-merged
+   rows. Badge is absolutely positioned in that column; it's absent
+   (just empty space) on non-merged lines. */
+#log .line { padding-left: 66px; position: relative; }
 #log .step-range-badge { position: absolute; left: 0; top: 2px;
   width: 58px; color: var(--muted); opacity: 0.7;
   font-size: 0.85em; font-style: italic; text-align: right;
   margin-right: 0; }
+#log .step-marker { padding-left: 66px; }
 #log .line { cursor: pointer; }
 #log .step-marker { cursor: pointer; }
 #log .line .meta { color: var(--muted); }
