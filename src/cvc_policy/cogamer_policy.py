@@ -161,6 +161,35 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             }
             if pos is not None:
                 inv_payload["pos"] = list(pos)
+            # Team id (for grouping in the viewer). Empty string means unknown.
+            self_state = getattr(mg_state, "self_state", None)
+            attrs = getattr(self_state, "attributes", None) if self_state else None
+            if attrs is not None:
+                team = attrs.get("team", "")
+                if team:
+                    inv_payload["team"] = str(team)
+            # Shared team inventory snapshot.
+            team_summary = getattr(mg_state, "team_summary", None)
+            shared = getattr(team_summary, "shared_inventory", None) if team_summary else None
+            if shared is not None:
+                inv_payload["team_resources"] = {
+                    k: int(v) for k, v in dict(shared).items()
+                }
+            # Junction counts, mirroring _summarize() but inline to avoid
+            # an extra sync program invocation every tick.
+            known_j = getattr(gs, "known_junctions", None)
+            team_attr = inv_payload.get("team", "")
+            if callable(known_j) and team_attr:
+                friendly_j = len(known_j(lambda e: e.owner == team_attr))
+                enemy_j = len(known_j(
+                    lambda e: e.owner not in {None, "neutral", team_attr}
+                ))
+                neutral_j = len(known_j(lambda e: e.owner in {None, "neutral"}))
+                inv_payload["junctions"] = {
+                    "friendly": friendly_j,
+                    "enemy": enemy_j,
+                    "neutral": neutral_j,
+                }
             self._recorder.emit(
                 type="inventory",
                 agent=self._agent_id,

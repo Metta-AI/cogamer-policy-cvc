@@ -145,6 +145,79 @@ def test_policyinfos_carries_role_and_summary():
     assert "action" in types
 
 
+def test_inventory_event_emits_team_and_team_resources():
+    """The per-tick `inventory` event exposes team id, shared team inventory,
+    and junction counts so the viewer can group agents by team."""
+    impl, state = _make_impl()
+
+    class _FakeAttrs:
+        def get(self, k: str, default: Any = None) -> Any:
+            return {"team": "team_blue"}.get(k, default)
+
+    class _FakeSelf:
+        attributes = _FakeAttrs()
+        inventory = {"hp": 80, "carbon": 3, "energy": 40}
+
+    class _FakeTeamSummary:
+        shared_inventory = {"carbon": 12, "oxygen": 4, "heart": 1}
+
+    class _FakeMgState:
+        self_state = _FakeSelf()
+        team_summary = _FakeTeamSummary()
+
+    # Attach to stub gs + provide a known_junctions hook that returns a stub
+    # list so the junction-counting branch fires.
+    class _Junction:
+        def __init__(self, owner: str | None) -> None:
+            self.owner = owner
+
+    def known_junctions(pred: Any = None) -> list[Any]:
+        js = [_Junction("team_blue"), _Junction("team_red"), _Junction(None)]
+        if pred is None:
+            return js
+        return [j for j in js if pred(j)]
+
+    gs = state.game_state
+    gs.mg_state = _FakeMgState()  # type: ignore[attr-defined]
+    gs.position = (10, 20)  # type: ignore[attr-defined]
+    gs.known_junctions = known_junctions  # type: ignore[attr-defined]
+
+    impl.step_with_state(object(), state)
+    inv_events = [e for e in impl._recorder.events if e["type"] == "inventory"]
+    assert len(inv_events) == 1
+    p = inv_events[0]["payload"]
+    assert p["team"] == "team_blue"
+    assert p["team_resources"] == {"carbon": 12, "oxygen": 4, "heart": 1}
+    assert p["junctions"] == {"friendly": 1, "enemy": 1, "neutral": 1}
+
+
+def test_inventory_event_omits_team_fields_cleanly_when_unavailable():
+    """When team_summary is None and attributes lack `team`, the payload
+    omits `team`, `team_resources`, and `junctions` rather than crashing."""
+    impl, state = _make_impl()
+
+    class _FakeAttrs:
+        def get(self, k: str, default: Any = None) -> Any:
+            return default
+
+    class _FakeSelf:
+        attributes = _FakeAttrs()
+        inventory = {"hp": 50}
+
+    class _FakeMgState:
+        self_state = _FakeSelf()
+        team_summary = None
+
+    state.game_state.mg_state = _FakeMgState()  # type: ignore[attr-defined]
+    impl.step_with_state(object(), state)
+    inv_events = [e for e in impl._recorder.events if e["type"] == "inventory"]
+    assert len(inv_events) == 1
+    p = inv_events[0]["payload"]
+    assert "team" not in p
+    assert "team_resources" not in p
+    assert "junctions" not in p
+
+
 def test_policyinfos_does_not_leak_across_agents():
     # Two impls sharing the same recorder — each agent's `_infos` reflects
     # only that agent's tick-local policy state (role + summary), never
