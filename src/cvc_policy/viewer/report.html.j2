@@ -59,6 +59,9 @@ main > section, main > .right-col { margin: 0 4px; }
 .right-col > .step-view-card.collapsed { max-height: none; overflow: visible; }
 .right-col > .log-card { flex: 1 1 auto; min-height: 0; }
 .step-view-card.collapsed #inventory-panel { display: none; }
+.step-view-tick { color: var(--accent); font-weight: 700;
+  font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  padding: 2px 4px; margin-bottom: 4px; }
 section { background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 10px;
   display: flex; flex-direction: column; min-height: 0; }
@@ -105,6 +108,8 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .line { padding: 2px 4px; border-left: 3px solid transparent;
   white-space: nowrap; }
 #log .line.current { border-left-color: var(--accent); background: var(--panel2); }
+#log .line.selected { background: var(--panel2);
+  outline: 1px solid var(--accent); outline-offset: -1px; }
 #log .line.hidden { display: none; }
 #log .line.merged-hidden { display: none; }
 #log .step-marker.merged-hidden { display: none; }
@@ -143,6 +148,29 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   font-size: 10px; font-weight: 600; margin-right: 4px; vertical-align: middle; }
 #log .type { color: var(--muted); margin-right: 4px; }
 #log .role-icon { margin-right: 4px; font-size: 0.9em; }
+#log .role-icon.gear-ok { background: rgba(16, 185, 129, 0.28);
+  color: #10b981; padding: 0 4px; border-radius: 3px; }
+#log .role-icon.gear-wrong { background: rgba(239, 68, 68, 0.28);
+  color: #ef4444; padding: 0 4px; border-radius: 3px; }
+#log .line .gear-pill { display: inline-block; padding: 0 5px;
+  border-radius: 3px; line-height: 1.1; }
+#log .line .gear-pill.gear-ok { background: rgba(16, 185, 129, 0.28);
+  color: #10b981; }
+#log .line .gear-pill.gear-wrong { background: rgba(239, 68, 68, 0.28);
+  color: #ef4444; }
+#log .line .role-arrow { color: var(--muted); padding: 0 4px; }
+#log .line.expanded { white-space: normal; background: var(--panel2); }
+#log .line .line-details { margin-top: 4px; padding: 6px 8px;
+  background: var(--bg); border-left: 2px solid var(--accent);
+  border-radius: 3px; font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px; color: var(--fg); cursor: text;
+  user-select: text; overflow-x: auto; }
+#log .line .line-details.pretty { white-space: pre; }
+#log .line .line-details:not(.pretty) { white-space: nowrap; }
+#log .line .line-details-toolbar { display: inline-block;
+  margin-right: 6px; color: var(--muted); cursor: pointer;
+  user-select: none; opacity: 0.7; }
+#log .line .line-details-toolbar:hover { opacity: 1; color: var(--accent); }
 .inventory-panel { display: flex; flex-direction: row; flex-wrap: wrap;
   align-items: flex-start; gap: 4px;
   padding: 6px 4px; margin-bottom: 6px;
@@ -150,7 +178,10 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 .inventory-panel .inv-row { display: flex; align-items: center; gap: 8px;
   padding: 2px 4px; border-radius: 3px;
   white-space: nowrap; overflow: hidden; }
-.inventory-panel .inv-agent { font-weight: 700; }
+.inventory-panel .inv-agent { font-weight: 700;
+  display: inline-block; min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .inventory-panel .inv-role { display: inline-flex; gap: 2px;
   align-items: center; }
 .inventory-panel .inv-hp { display: inline-flex; gap: 2px;
@@ -190,41 +221,31 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   padding: 4px 6px; flex: 1 1 140px; min-width: 120px;
   border-right: 1px dashed var(--border); }
 .inventory-panel .team-block:last-child { border-right: 0; }
-.inventory-panel .team-block.collapsed .team-stats,
-.inventory-panel .team-block.collapsed .team-inventory,
-.inventory-panel .team-block.collapsed .team-composition,
-.inventory-panel .team-block.collapsed .team-agents { display: none; }
-.inventory-panel .team-composition {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 1px 4px; font-size: 11px; min-height: 18px; }
-.inventory-panel .team-composition .role-count {
+.inventory-panel .team-inventory .role-count {
   display: inline-flex; gap: 2px; align-items: center;
   padding: 1px 4px; border-radius: 3px; background: var(--panel2);
   font-family: ui-monospace, Menlo, monospace; }
-.inventory-panel .team-composition .role-count .role-icon {
+.inventory-panel .team-inventory .role-count .role-icon {
   opacity: 0.85; }
 .inventory-panel .team-agents { display: flex; flex-direction: column; gap: 1px; }
 .inventory-panel .team-header { display: flex; align-items: center; gap: 8px;
   padding: 2px 4px; font-weight: 700; color: var(--fg);
   font-family: ui-monospace, Menlo, monospace; font-size: 11px;
-  text-transform: uppercase; letter-spacing: 0.04em;
-  cursor: pointer; user-select: none; }
+  text-transform: uppercase; letter-spacing: 0.04em; }
 .inventory-panel .team-header .team-id { color: var(--accent); }
-.inventory-panel .team-stats,
 .inventory-panel .team-inventory {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
   padding: 1px 4px; font-size: 11px; min-height: 18px; }
-.inventory-panel .team-stats .jct {
+.inventory-panel .team-inventory > span {
+  display: inline-flex; gap: 2px; align-items: center;
+  padding: 1px 4px; border-radius: 3px; background: var(--panel2);
+  font-family: ui-monospace, Menlo, monospace; }
+.inventory-panel .team-inventory .team-resources,
+.inventory-panel .team-inventory .team-roles {
+  background: transparent; padding: 0; gap: 4px; flex-wrap: wrap; }
+.inventory-panel .team-inventory .team-score { color: var(--muted); }
+.inventory-panel .team-inventory .jct {
   font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
-.inventory-panel .team-stats .team-score { color: var(--muted); }
-.inventory-panel .team-stats .team-junctions,
-.inventory-panel .team-inventory .team-resources {
-  display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-.inventory-panel .team-header .team-toggle {
-  margin-left: auto; color: var(--muted); font-weight: 700;
-  font-size: 14px; line-height: 1; padding: 0 4px; }
-.inventory-panel .team-block.collapsed .team-toggle::before { content: '+'; }
-.inventory-panel .team-block:not(.collapsed) .team-toggle::before { content: '\2212'; }
 #log hr.step-sep { border: 0; border-top: 1px solid var(--border);
   margin: 4px 0; height: 0; }
 #log .step-marker { color: var(--muted); font-size: 10px;
@@ -290,23 +311,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   <div class="right-col">
   <section class="step-view-card" id="step-view-card">
+    <div class="step-view-tick" id="step-view-current">step 0</div>
     <div id="inventory-panel" class="inventory-panel">
       {% for tg in team_groups %}
       <div class="team-block" data-team="{{ tg.team }}">
-        <div class="team-header" title="click to collapse/expand">
+        <div class="team-header">
           <span class="team-id">{{ tg.team if tg.team else 'no-team' }}</span>
-          <span class="team-toggle" aria-hidden="true"></span>
-        </div>
-        <div class="team-stats">
-          <span class="team-score"
-            title="score (deferred: no direct source yet)">score: &ndash;</span>
-          <span class="team-junctions"></span>
         </div>
         <div class="team-inventory">
-          <span class="team-resources"></span>
-        </div>
-        <div class="team-composition">
+          <span class="team-score"
+            title="score (deferred: no direct source yet)">&#9733; &ndash;</span>
+          <span class="team-junctions"></span>
           <span class="team-roles"></span>
+          <span class="team-resources"></span>
         </div>
         <div class="team-agents">
         {% for a in tg.agents %}
@@ -492,7 +509,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
           var j = (hit.payload || {}).junctions || {};
           var f = j.friendly || 0;
           jctEl.innerHTML =
-            '<span class="jct" title="team junctions">jct: ' + f + '</span>';
+            '<span class="jct" title="team junctions">\u29C9 ' + f +
+            '</span>';
         } else {
           jctEl.innerHTML = '';
         }
@@ -648,7 +666,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       var type = el.dataset.type;
       var agent = el.dataset.agent;
       var stream = el.dataset.stream;
-      var text = el.textContent.toLowerCase();
+      // Include data-payload so the role_change enrichment (which
+      // replaces visible text with glyphs) doesn't hide rows from the
+      // text filter.
+      var text = (el.textContent + ' ' +
+        (el.dataset.payload || '')).toLowerCase();
       var hide = false;
       if (hiddenTypes[type]) hide = true;
       if (agent !== '' && hiddenAgents[agent]) hide = true;
@@ -795,6 +817,14 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     }
     if (isNaN(step)) return;
     scrub.value = step;
+    // Highlight the clicked line (single-click = select; double-click
+    // still expands via the separate dblclick handler).
+    if (target.classList.contains('line')) {
+      log.querySelectorAll('.line.selected').forEach(function (el) {
+        el.classList.remove('selected');
+      });
+      target.classList.add('selected');
+    }
     var agentAttr = target.dataset.agent;
     if (agentAttr !== undefined && agentAttr !== '') {
       setStep(step, parseInt(agentAttr, 10));
@@ -862,15 +892,6 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       applyFilters();
     });
   });
-
-  document.querySelectorAll('.inventory-panel .team-header').forEach(
-    function (hdr) {
-      hdr.addEventListener('click', function (ev) {
-        if (ev.target.closest('.agent-eye')) return;
-        var block = hdr.closest('.team-block');
-        if (block) block.classList.toggle('collapsed');
-      });
-    });
 
   tabs.addEventListener('click', function (e) {
     var b = e.target.closest('.tab');
@@ -948,7 +969,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       return;
     }
     // Agent-selection event from mettascope: highlight in Step View.
-    if ((t === 'mettascopeAgent' || t === 'mettascopeSelect') && hasAgent) {
+    if ((t === 'mettascopeSelectAgent' || t === 'mettascopeAgent'
+        || t === 'mettascopeSelect') && hasAgent) {
       _highlightAgentInStepView(event.data.agent);
     }
   });
@@ -1094,6 +1116,130 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   applyFilters();
   setStep(0);
+
+  // Color the per-line role glyph based on whether the agent has
+  // the matching gear in inventory at that step. Green = right gear,
+  // red = holding another gear item, unstyled = no gear at all.
+  (function () {
+    var GEAR_KEYS = ['miner', 'aligner', 'scrambler', 'scout'];
+    document.querySelectorAll('#log .line .role-icon').forEach(
+      function (icon) {
+        var line = icon.closest('.line');
+        var agent = parseInt(line.dataset.agent, 10);
+        var step = parseInt(line.dataset.step, 10);
+        var role = icon.getAttribute('title');
+        if (isNaN(agent) || !role || GEAR_KEYS.indexOf(role) < 0) return;
+        var hb = _findLatestHeartbeat(agent, step);
+        var inv = (hb && hb.payload && hb.payload.inventory) || {};
+        if ((inv[role] || 0) > 0) icon.classList.add('gear-ok');
+        else if (GEAR_KEYS.some(function (k) { return (inv[k] || 0) > 0; }))
+          icon.classList.add('gear-wrong');
+      });
+  })();
+
+  // Rewrite `role_change` log lines as `glyph → glyph`, with the
+  // target glyph colored by whether the agent actually has the right
+  // gear for the new role at that step (green=ok, red=wrong gear, no
+  // box=no gear at all).
+  (function () {
+    var GEAR_KEYS = ['miner', 'aligner', 'scrambler', 'scout'];
+    function _esc(s) {
+      return String(s).replace(/[&<>"]/g, function (c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+      });
+    }
+    document.querySelectorAll('#log .line[data-type="role_change"]')
+      .forEach(function (el) {
+        var payloadEl = el.querySelector('.payload');
+        if (!payloadEl) return;
+        var raw = el.dataset.payload || payloadEl.textContent;
+        var fromM = /\bfrom=(\w+)/.exec(raw);
+        var toM = /\bto=(\w+)/.exec(raw);
+        if (!fromM || !toM) return;
+        var fromRole = fromM[1], toRole = toM[1];
+        var agent = parseInt(el.dataset.agent, 10);
+        var step = parseInt(el.dataset.step, 10);
+        var gearClass = '';
+        if (!isNaN(agent)) {
+          var hb = _findLatestHeartbeat(agent, step);
+          var inv = (hb && hb.payload && hb.payload.inventory) || {};
+          var hasTarget = (inv[toRole] || 0) > 0;
+          var hasAny = GEAR_KEYS.some(function (k) {
+            return (inv[k] || 0) > 0;
+          });
+          if (hasTarget) gearClass = 'gear-ok';
+          else if (hasAny) gearClass = 'gear-wrong';
+        }
+        var fromGlyph = INV_ICONS[fromRole] || fromRole;
+        var toGlyph = INV_ICONS[toRole] || toRole;
+        var pillClass = gearClass ? 'gear-pill ' + gearClass : '';
+        var title = fromRole + ' \u2192 ' + toRole +
+          (gearClass === 'gear-ok' ? ' (gear ready)' :
+           gearClass === 'gear-wrong' ? ' (wrong gear held)' :
+           ' (no gear)');
+        payloadEl.innerHTML =
+          '<span title="' + _esc(fromRole) + '">' + _esc(fromGlyph) +
+          '</span><span class="role-arrow">\u2192</span>' +
+          '<span class="' + pillClass + '" title="' + _esc(title) +
+          '">' + _esc(toGlyph) + '</span>';
+      });
+  })();
+
+  // Double-click a log line to expand it: render the full event
+  // payload as pretty-printed JSON below the summary line. Another
+  // double-click collapses.
+  log.addEventListener('dblclick', function (ev) {
+    var line = ev.target.closest('.line');
+    if (!line || !log.contains(line)) return;
+    // Don't toggle if the user is just double-clicking in the
+    // already-expanded details block to select text.
+    if (ev.target.closest('.line-details')) return;
+    ev.preventDefault();
+    if (window.getSelection) window.getSelection().removeAllRanges();
+    var existing = line.querySelector('.line-details');
+    if (existing) {
+      existing.remove();
+      line.classList.remove('expanded');
+      return;
+    }
+    var idx = parseInt(line.dataset.idx, 10);
+    if (isNaN(idx)) return;
+    var evt = events[idx];
+    if (!evt) return;
+    var details = document.createElement('div');
+    details.className = 'line-details';
+    var payload = evt.payload || {};
+    var toolbar = document.createElement('span');
+    toolbar.className = 'line-details-toolbar';
+    toolbar.textContent = '{}';
+    toolbar.title = 'toggle pretty-print';
+    var body = document.createElement('span');
+    body.className = 'line-details-body';
+    function _render(pretty) {
+      try {
+        body.textContent = pretty
+          ? JSON.stringify(payload, null, 2)
+          : JSON.stringify(payload);
+      } catch (err) {
+        body.textContent = String(payload);
+      }
+      details.classList.toggle('pretty', !!pretty);
+    }
+    _render(false);
+    toolbar.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _render(!details.classList.contains('pretty'));
+    });
+    // Prevent double-click inside the toolbar from bubbling up and
+    // collapsing the line.
+    toolbar.addEventListener('dblclick', function (e) {
+      e.stopPropagation();
+    });
+    details.appendChild(toolbar);
+    details.appendChild(body);
+    line.appendChild(details);
+    line.classList.add('expanded');
+  });
 
   // Poll /_mtime and reload when a watched file (events.json, result.json,
   // template, render.py) changes. Silently no-ops on file:// or if the

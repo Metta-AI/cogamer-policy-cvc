@@ -3,12 +3,57 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
 from cvc_policy.recorder import payload_text
+
+
+_ROLE_KV_RE = re.compile(r"(?:^|\s)role=\S+\s*")
+
+
+def _strip_role_kv(text: str) -> str:
+    """Remove a leading/standalone `role=<val>` token from an event
+    text. The HTML viewer renders role as a colored glyph, so the kv
+    form is redundant."""
+    return _ROLE_KV_RE.sub(" ", text).strip()
+
+
+def _merge_action_target(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold a `target` event into the preceding `action` event for the
+    same agent in the same step. The HTML viewer shows the pair as a
+    single line (one event per agent per tick). Also strips `role=X`
+    from the action text since the role is visible as a glyph.
+    """
+    out: list[dict[str, Any]] = []
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if (
+            ln["type"] == "action"
+            and i + 1 < len(lines)
+            and lines[i + 1]["type"] == "target"
+            and lines[i + 1]["agent"] == ln["agent"]
+        ):
+            target = lines[i + 1]
+            merged = dict(ln)
+            action_text = _strip_role_kv(merged["text"])
+            target_text = target["text"]
+            sep = "  " if action_text else ""
+            merged["text"] = f"{action_text}{sep}-> {target_text}"
+            merged["merged_idx"] = [target["idx"]]
+            out.append(merged)
+            i += 2
+            continue
+        if ln["type"] == "action":
+            ln = dict(ln)
+            ln["text"] = _strip_role_kv(ln["text"])
+        out.append(ln)
+        i += 1
+    return out
 
 
 # 8 distinguishable hex colors for agent tags (agent_id % 8).
@@ -274,16 +319,17 @@ def render_html(run_dir: Path) -> str:
             log_groups.append(g)
             continue
         lines: list[dict[str, Any]] = []
-        prev_agent_in_step: Any = object()  # sentinel distinct from None
         for e in g["events"]:
-            ln = _as_line(idx_of[id(e)], e)
+            lines.append(_as_line(idx_of[id(e)], e))
+        lines = _merge_action_target(lines)
+        prev_agent_in_step: Any = object()
+        for ln in lines:
             # Hide the agent+role glyphs when the preceding line in this
             # step block has the same agent — the agent column is the
             # visual "thread" that the follow-up events belong to.
             ln["hide_agent"] = (
                 ln["agent"] is not None and ln["agent"] == prev_agent_in_step
             )
-            lines.append(ln)
             prev_agent_in_step = ln["agent"]
         log_groups.append({
             "type": "step",

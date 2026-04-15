@@ -276,6 +276,29 @@ def _make_run_handler(run_dir: Path, mettascope_dist: Path | None):
             self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
             super().end_headers()
 
+        # Route access logs to stdout and error logs to stderr. The
+        # backgrounded server in `_view_run_dir` pipes those to two
+        # separate files under `.logs/`.
+        def log_message(self, format: str, *args) -> None:  # noqa: A002
+            import sys
+
+            sys.stdout.write("%s - - [%s] %s\n" % (
+                self.address_string(),
+                self.log_date_time_string(),
+                format % args,
+            ))
+            sys.stdout.flush()
+
+        def log_error(self, format: str, *args) -> None:  # noqa: A002
+            import sys
+
+            sys.stderr.write("%s - - [%s] %s\n" % (
+                self.address_string(),
+                self.log_date_time_string(),
+                format % args,
+            ))
+            sys.stderr.flush()
+
     return _Handler
 
 
@@ -300,49 +323,122 @@ def _serve_run(run_dir: Path):
     return httpd, port
 
 
-def _view_run_dir(
-    run_dir: Path, *, no_open: bool = False, no_server: bool = False
-) -> None:
-    """Render report.html and (optionally) serve + open in browser.
+def _run_serve_foreground(run_dir: Path, port: int) -> None:
+    """Blocking server loop: the child process invokes this.
 
-    Shared between `cgp view` and `cgp play --view`.
+    Access logs (via `Handler.log_message`) print to stdout; error
+    logs (via `log_error`) print to stderr. The parent redirects both
+    to the matching files in `.logs/`.
     """
-    import webbrowser
-
-    from cvc_policy.viewer import render
-
-    out = render(run_dir)
-    typer.echo(f"wrote {out}")
-
-    if no_server:
-        if not no_open:  # pragma: no cover - launches a real browser
-            webbrowser.open("file://" + str(out.resolve()))
-        return
-
-    # Start the server directly on this thread (blocking) so Ctrl-C
-    # aborts cleanly.
     import http.server
 
-    dist = _mettascope_dist()
-    if dist is None:
-        typer.echo(
-            "warning: mettascope dist not found; embedded replay will fall"
-            " back to the public github-pages URL (mixed content may block"
-            " it in browsers)."
-        )
-    handler_cls = _make_run_handler(run_dir, dist)
-    httpd = http.server.ThreadingHTTPServer(("localhost", 0), handler_cls)
-    port = httpd.server_address[1]
-    url = f"http://localhost:{port}/report.html"
-    typer.echo(f"serving {run_dir} at {url}  (Ctrl-C to stop)")
-    if not no_open:
-        webbrowser.open(url)
+    handler_cls = _make_run_handler(run_dir, _mettascope_dist())
+    httpd = http.server.ThreadingHTTPServer(("localhost", port), handler_cls)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         httpd.server_close()
+
+
+def _view_run_dir(
+    run_dir: Path, *, no_open: bool = False, no_server: bool = False
+) -> None:
+    """Render + serve the report in a backgrounded HTTP process.
+
+    Shared between `cgp view` and `cgp play --view`. When called with
+    the env var `CGP_VIEW_PORT` set, this process IS the detached
+    child: it just binds to that port and blocks in the server loop.
+    """
+    import signal
+    import socket
+    import subprocess
+    import sys
+    import time
+    import webbrowser
+
+    from cvc_policy.viewer import render
+
+    # File:// mode — render to disk, optionally open, done.
+    if no_server:
+        out = render(run_dir)
+        typer.echo(f"wrote {out}")
+        if not no_open:  # pragma: no cover - launches a real browser
+            webbrowser.open("file://" + str(out.resolve()))
+        return
+
+    # Child mode: spawned by a prior invocation; run the blocking loop.
+    child_port_env = os.environ.get("CGP_VIEW_PORT")
+    if child_port_env:
+        _run_serve_foreground(run_dir, int(child_port_env))
+        return
+
+    # Parent mode: reap any prior backgrounded server, pick a port,
+    # spawn a detached child that serves, then return.
+    log_dir = Path(".logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = log_dir / "cgp-view.pid"
+    access_log = log_dir / "cgp-view.log"
+    error_log = log_dir / "cgp-view.err"
+
+    # Kill any previous server so each `cgp view` owns a fresh process.
+    if pid_file.exists():
+        try:
+            old_pid = int(pid_file.read_text().strip())
+            os.kill(old_pid, signal.SIGTERM)
+            for _ in range(20):
+                time.sleep(0.05)
+                try:
+                    os.kill(old_pid, 0)
+                except ProcessLookupError:
+                    break
+        except (ValueError, ProcessLookupError, PermissionError, OSError):
+            pass
+        try:
+            pid_file.unlink()
+        except FileNotFoundError:
+            pass
+
+    # Pick a free port up front so we can print the URL and open the
+    # browser before the child has finished binding.
+    sock = socket.socket()
+    sock.bind(("localhost", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    if _mettascope_dist() is None:
+        typer.echo(
+            "warning: mettascope dist not found; embedded replay will fall"
+            " back to the public github-pages URL (mixed content may block"
+            " it in browsers)."
+        )
+
+    env = {**os.environ, "CGP_VIEW_PORT": str(port)}
+    stdout_fh = access_log.open("a", buffering=1)
+    stderr_fh = error_log.open("a", buffering=1)
+    child = subprocess.Popen(
+        [
+            sys.executable, "-m", "cvc_policy.cli",
+            "view", str(run_dir), "--no-open",
+        ],
+        env=env,
+        stdout=stdout_fh,
+        stderr=stderr_fh,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    pid_file.write_text(str(child.pid))
+    url = f"http://localhost:{port}/report.html"
+    typer.echo(f"serving {run_dir} at {url}")
+    typer.echo(
+        f"  pid={child.pid}  access={access_log}  errors={error_log}"
+    )
+
+    if not no_open:
+        # Give the child a moment to bind before opening the tab.
+        time.sleep(0.3)
+        webbrowser.open(url)
 
 
 @app.command("view")
