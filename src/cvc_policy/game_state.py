@@ -47,12 +47,14 @@ class GameState:
         *,
         agent_id: int,
         on_cargo_cap_discovery: Callable[[tuple[str, ...], int], None] | None = None,
+        on_heart_cap_discovery: Callable[[tuple[str, ...], int], None] | None = None,
     ) -> None:
         self.engine = CogletAgentPolicy(
             policy_env_info,
             agent_id=agent_id,
             world_model=WorldModel(),
             on_cargo_cap_discovery=on_cargo_cap_discovery,
+            on_heart_cap_discovery=on_heart_cap_discovery,
         )
         self.agent_id = agent_id
         self.role: str = "miner"
@@ -114,10 +116,18 @@ class GameState:
         # Cargo-cap discovery: at this point `state` reflects the outcome of
         # last tick's action. If that action was a mine attempt, compare cargo
         # to the snapshot taken at end of last tick.
+        sig = gear_signature(state)
         engine._cargo_cap.observe(
-            gear_sig=gear_signature(state),
+            gear_sig=sig,
             cargo=resource_total(state),
             mined_last_tick=engine._prev_summary_was_mine,
+        )
+        # Heart-cap discovery: same plateau logic, keyed on the single `heart`
+        # inventory slot. Fires when last tick's action was a heart-pickup.
+        engine._heart_cap.observe(
+            gear_sig=sig,
+            hearts=int(state.self_state.inventory.get("heart", 0)),
+            tried_pickup_last_tick=engine._prev_summary_was_heart_pickup,
         )
 
         # Store for bookkeeping at end of step
@@ -136,6 +146,11 @@ class GameState:
         engine._last_global_pos = current_pos
         engine._last_inventory_signature = inventory_signature(state)
         engine._prev_summary_was_mine = summary.startswith("mine_") or "_mine_" in summary
+        # Heart-pickup attempts: aligner/scrambler actions at or toward the hub
+        # intending to take a heart. Match the summaries emitted by roles.py.
+        engine._prev_summary_was_heart_pickup = (
+            summary == "acquire_heart" or summary == "batch_hearts"
+        )
 
     # ── Properties delegating to engine/state ─────────────────────────
 

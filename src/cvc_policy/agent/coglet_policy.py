@@ -12,6 +12,7 @@ from typing import Callable
 
 from cvc_policy.agent import KnownEntity, absolute_position, manhattan
 from cvc_policy.agent.cargo_cap import CargoCapTracker, GearSig
+from cvc_policy.agent.heart_cap import HeartCapTracker
 from cvc_policy.agent.main import CvcEngine
 from mettagrid.sdk.agent import MacroDirective, MettagridState
 
@@ -43,6 +44,7 @@ class CogletAgentPolicy(CvcEngine):
         self,
         *args,
         on_cargo_cap_discovery: Callable[[GearSig, int], None] | None = None,
+        on_heart_cap_discovery: Callable[[GearSig, int], None] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -51,6 +53,9 @@ class CogletAgentPolicy(CvcEngine):
         # Discovered cargo caps, indexed by gear signature.
         self._cargo_cap = CargoCapTracker(on_discovery=on_cargo_cap_discovery)
         self._prev_summary_was_mine: bool = False
+        # Discovered heart-carry caps, indexed by gear signature.
+        self._heart_cap = HeartCapTracker(on_discovery=on_heart_cap_discovery)
+        self._prev_summary_was_heart_pickup: bool = False
 
     def _macro_directive(self, state: MettagridState) -> MacroDirective:
         # LLM override takes priority
