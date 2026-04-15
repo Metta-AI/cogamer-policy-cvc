@@ -404,7 +404,21 @@ def play(
         import tempfile
 
         runs_root = Path(tempfile.mkdtemp(prefix="cgp-play-"))
-    run = run_scenario(synthetic, runs_root=runs_root)
+    try:
+        run = run_scenario(synthetic, runs_root=runs_root)
+    except ValueError as exc:
+        msg = str(exc)
+        if "exceeds available spawn points" in msg:
+            typer.secho(
+                f"Error: {msg}\n\n"
+                "Hint: the mission and variant disagree on num_agents. Try a "
+                "mission whose map has more spawn slots (e.g., four_score) or "
+                "drop the conflicting variant.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(1) from exc
+        raise
     typer.echo(f"manual run: {run.run_dir}")
     typer.echo(
         f"steps: {run.result.get('steps')}  "
