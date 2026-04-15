@@ -128,6 +128,18 @@ def heart_batch_target(state: MettagridState, role: str) -> int:
     return _HEART_BATCH_TARGETS[role]
 
 
+def heart_cap_for_role(role: str, *, known_cap: int | None) -> int:
+    """Heart batch target, preferring the discovered cap when known.
+
+    When the HeartCapTracker has not yet observed a plateau, fall back to
+    the static per-role default (_HEART_BATCH_TARGETS). Returns 0 for roles
+    that don't batch hearts (e.g., miner).
+    """
+    if known_cap is not None:
+        return known_cap
+    return _HEART_BATCH_TARGETS.get(role, 0)
+
+
 def team_can_afford_gear(state: MettagridState, role: str) -> bool:
     if role not in _GEAR_COSTS:
         return True
@@ -158,11 +170,14 @@ def should_batch_hearts(
     *,
     role: str,
     hub_position: tuple[int, int] | None,
+    known_cap: int | None = None,
 ) -> bool:
     if hub_position is None:
         return False
     hearts = int(state.self_state.inventory.get("heart", 0))
-    batch_target = heart_batch_target(state, role)
+    # Prefer the dynamically discovered cap when available; otherwise the
+    # static per-role default.
+    batch_target = heart_cap_for_role(role, known_cap=known_cap)
     if hearts <= 0 or hearts >= batch_target:
         return False
     if not team_can_refill_hearts(state):

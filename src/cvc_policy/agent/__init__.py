@@ -19,6 +19,7 @@ from cvc_policy.agent.resources import (
     gear_signature,
     has_role_gear,
     heart_batch_target,
+    heart_cap_for_role,
     heart_supply_capacity,
     inventory_signature,
     needs_emergency_mining,

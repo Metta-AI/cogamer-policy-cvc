@@ -10,6 +10,7 @@ from cvc_policy.agent.resources import (
     attr_str,
     has_role_gear,
     heart_batch_target,
+    heart_cap_for_role,
     heart_supply_capacity,
     inventory_signature,
     needs_emergency_mining,
@@ -405,3 +406,24 @@ def test_should_batch_hearts_cases(
     expected: bool,
 ) -> None:
     assert should_batch_hearts(make_state(**state_kwargs), role=role, hub_position=hub_position) is expected
+
+
+# ---------------------------------------------------------------------------
+# heart_cap_for_role: prefer discovered cap over the static default.
+# ---------------------------------------------------------------------------
+
+
+def test_heart_cap_for_role_uses_known_cap_when_present() -> None:
+    assert heart_cap_for_role("aligner", known_cap=5) == 5
+    assert heart_cap_for_role("scrambler", known_cap=4) == 4
+
+
+def test_heart_cap_for_role_falls_back_to_default_when_unknown() -> None:
+    assert heart_cap_for_role("aligner", known_cap=None) == 3
+    assert heart_cap_for_role("scrambler", known_cap=None) == 2
+
+
+def test_heart_cap_for_role_unknown_role_returns_zero_without_cap() -> None:
+    assert heart_cap_for_role("miner", known_cap=None) == 0
+    # Known cap still wins for roles without a default.
+    assert heart_cap_for_role("miner", known_cap=7) == 7

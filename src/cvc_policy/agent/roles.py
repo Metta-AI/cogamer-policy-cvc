@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from cvc_policy.agent import (
     absolute_position,
+    gear_signature,
     resource_total,
     should_batch_hearts,
     spawn_relative_station_target,
@@ -29,6 +30,18 @@ class RolesMixin:
     _world_model: WorldModel
     _agent_id: int
     _step_index: int
+
+    def _known_heart_cap(self, state: MettagridState) -> int | None:
+        """Lookup the discovered heart cap for the current gear signature.
+
+        Returns None when the base engine is used without a heart-cap
+        tracker (e.g., unit tests), so callers fall back to the static
+        per-role defaults.
+        """
+        tracker = getattr(self, "_heart_cap", None)
+        if tracker is None:
+            return None
+        return tracker.known_cap(gear_signature(state))
 
     def _acquire_role_gear(self, state: MettagridState, role: str) -> tuple[Action, str]:
         station_type = f"{role}_station"
@@ -81,7 +94,13 @@ class RolesMixin:
             if hub is not None:
                 return self._move_to_known(state, hub, summary="acquire_heart", vibe="change_vibe_heart")  # type: ignore[attr-defined]
             return self._explore_action(state, role="aligner", summary="find_hub_for_heart")  # type: ignore[attr-defined]
-        if should_batch_hearts(state, role="aligner", hub_position=hub.position if hub else None):
+        heart_cap = self._known_heart_cap(state)
+        if should_batch_hearts(
+            state,
+            role="aligner",
+            hub_position=hub.position if hub else None,
+            known_cap=heart_cap,
+        ):
             self._clear_target_claim()  # type: ignore[attr-defined]
             self._clear_sticky_target()  # type: ignore[attr-defined]
             assert hub is not None
@@ -112,7 +131,13 @@ class RolesMixin:
             if hub is not None:
                 return self._move_to_known(state, hub, summary="acquire_heart", vibe="change_vibe_heart")  # type: ignore[attr-defined]
             return self._explore_action(state, role="scrambler", summary="find_hub_for_heart")  # type: ignore[attr-defined]
-        if should_batch_hearts(state, role="scrambler", hub_position=hub.position if hub else None):
+        heart_cap = self._known_heart_cap(state)
+        if should_batch_hearts(
+            state,
+            role="scrambler",
+            hub_position=hub.position if hub else None,
+            known_cap=heart_cap,
+        ):
             self._clear_sticky_target()  # type: ignore[attr-defined]
             assert hub is not None
             return self._move_to_known(state, hub, summary="batch_hearts", vibe="change_vibe_heart")  # type: ignore[attr-defined]
