@@ -242,46 +242,17 @@ def _serve_run(run_dir: Path):
     return httpd, port
 
 
-@app.command("view")
-def view(
-    run: str = typer.Argument(..., help="Run id (under --runs-root) or path."),
-    runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
-    no_open: bool = typer.Option(False, "--no-open", help="Do not launch browser."),
-    no_server: bool = typer.Option(
-        False,
-        "--no-server",
-        help="Do not start local HTTP server; open report.html via file://.",
-    ),
+def _view_run_dir(
+    run_dir: Path, *, no_open: bool = False, no_server: bool = False
 ) -> None:
-    """Render and open the HTML report for a run.
+    """Render report.html and (optionally) serve + open in browser.
 
-    By default, starts a small local HTTP server rooted at the run
-    directory so the embedded mettascope iframe can fetch
-    `replay.json.z` over HTTP. Use `--no-server` to open the report via
-    `file://` instead (iframe won't work cross-origin).
+    Shared between `cgp view` and `cgp play --view`.
     """
     import webbrowser
 
     from cvc_policy.viewer import render
 
-    candidate = Path(run)
-    if candidate.is_dir():
-        run_dir = candidate
-    else:
-        run_dir = runs_root / run
-        # Reject path traversal: the resolved run_dir must sit under
-        # the resolved runs_root.
-        resolved = run_dir.resolve()
-        root_resolved = runs_root.resolve()
-        try:
-            resolved.relative_to(root_resolved)
-        except ValueError:
-            raise typer.BadParameter(
-                f"invalid run id (path traversal outside {runs_root}): {run}"
-            )
-    if not run_dir.is_dir():
-        typer.echo(f"no such run: {run_dir}")
-        raise typer.Exit(code=2)
     out = render(run_dir)
     typer.echo(f"wrote {out}")
 
@@ -291,8 +262,7 @@ def view(
         return
 
     # Start the server directly on this thread (blocking) so Ctrl-C
-    # aborts cleanly. Tests patch `serve_forever` to raise
-    # KeyboardInterrupt, so the block below unwinds immediately.
+    # aborts cleanly.
     import http.server
 
     dist = _mettascope_dist()
@@ -315,6 +285,45 @@ def view(
         pass
     finally:
         httpd.server_close()
+
+
+@app.command("view")
+def view(
+    run: str = typer.Argument(..., help="Run id (under --runs-root) or path."),
+    runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not launch browser."),
+    no_server: bool = typer.Option(
+        False,
+        "--no-server",
+        help="Do not start local HTTP server; open report.html via file://.",
+    ),
+) -> None:
+    """Render and open the HTML report for a run.
+
+    By default, starts a small local HTTP server rooted at the run
+    directory so the embedded mettascope iframe can fetch
+    `replay.json.z` over HTTP. Use `--no-server` to open the report via
+    `file://` instead (iframe won't work cross-origin).
+    """
+    candidate = Path(run)
+    if candidate.is_dir():
+        run_dir = candidate
+    else:
+        run_dir = runs_root / run
+        # Reject path traversal: the resolved run_dir must sit under
+        # the resolved runs_root.
+        resolved = run_dir.resolve()
+        root_resolved = runs_root.resolve()
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            raise typer.BadParameter(
+                f"invalid run id (path traversal outside {runs_root}): {run}"
+            )
+    if not run_dir.is_dir():
+        typer.echo(f"no such run: {run_dir}")
+        raise typer.Exit(code=2)
+    _view_run_dir(run_dir, no_open=no_open, no_server=no_server)
 
 
 @app.command("runs")
@@ -367,6 +376,10 @@ def play(
         True, "--record/--no-record", help="Write a run folder under --runs-root."
     ),
     runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+    view: bool = typer.Option(
+        False, "--view",
+        help="After the run completes, render + serve the report and open a browser.",
+    ),
 ) -> None:
     """Play a mission ad-hoc with optional mission/variant/policy overrides."""
     from cvc_policy.overrides import parse_override, parse_variant_override
@@ -424,6 +437,8 @@ def play(
         f"steps: {run.result.get('steps')}  "
         f"duration: {run.result.get('duration_s') or 0.0:.2f}s"
     )
+    if view:
+        _view_run_dir(run.run_dir)
 
 
 @app.command("test-cov")
