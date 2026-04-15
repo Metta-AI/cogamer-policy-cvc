@@ -283,6 +283,10 @@ def render(run_dir: Path) -> Path:
     # Any event whose payload carries `inventory` or `hp` contributes
     # (action events fire every tick; heartbeats add role/team_resources).
     inventory_by_agent_step: dict[str, list[dict[str, Any]]] = {}
+    # Map each agent to its most recently observed team id, and collect
+    # team-level snapshots (team_resources + junctions) indexed by team.
+    agent_to_team: dict[int, str] = {}
+    team_by_step: dict[str, list[dict[str, Any]]] = {}
     for e in events:
         payload = e.get("payload") or {}
         if not ("inventory" in payload or "hp" in payload):
@@ -295,8 +299,33 @@ def render(run_dir: Path) -> Path:
             "step": int(e.get("step", 0)),
             "payload": dict(payload),
         })
+        team = payload.get("team")
+        if isinstance(team, str) and team:
+            agent_to_team[int(a)] = team
+            team_payload: dict[str, Any] = {}
+            if "team_resources" in payload:
+                team_payload["team_resources"] = payload["team_resources"]
+            if "junctions" in payload:
+                team_payload["junctions"] = payload["junctions"]
+            if team_payload:
+                team_by_step.setdefault(team, []).append({
+                    "step": int(e.get("step", 0)),
+                    "payload": team_payload,
+                })
     for entries in inventory_by_agent_step.values():
         entries.sort(key=lambda r: r["step"])
+    for entries in team_by_step.values():
+        entries.sort(key=lambda r: r["step"])
+
+    # Group agents by team id, with agents lacking a team id falling under
+    # the empty-string bucket. Teams sorted by team id; agents keep their
+    # existing order within each team.
+    team_groups: list[dict[str, Any]] = []
+    by_team: dict[str, list[int]] = {}
+    for a in agents:
+        by_team.setdefault(agent_to_team.get(a, ""), []).append(a)
+    for team in sorted(by_team):
+        team_groups.append({"team": team, "agents": by_team[team]})
 
     failed = [a for a in result.get("assertions", []) if not a.get("passed")]
     status = result.get("status", "unknown")
@@ -320,6 +349,8 @@ def render(run_dir: Path) -> Path:
         "inventory_by_agent_step_json": _safe_script_json(
             inventory_by_agent_step
         ),
+        "team_by_step_json": _safe_script_json(team_by_step),
+        "team_groups": team_groups,
         "failed": failed,
         "assertions": result.get("assertions", []),
         "has_replay": has_replay,
