@@ -166,6 +166,22 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   background: #334155; }
 .inventory-panel .inv-bar.hp .seg.filled { background: #10b981; }
 .inventory-panel .inv-bar.energy .seg.filled { background: #facc15; }
+.inventory-panel .team-block { display: flex; flex-direction: column; gap: 1px;
+  padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.inventory-panel .team-block:last-child { border-bottom: 0; }
+.inventory-panel .team-header { display: flex; align-items: center; gap: 8px;
+  padding: 2px 4px; font-weight: 700; color: var(--fg);
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.inventory-panel .team-header .team-id { color: var(--accent); }
+.inventory-panel .team-header .team-resources,
+.inventory-panel .team-header .team-junctions {
+  display: inline-flex; gap: 4px; align-items: center; font-weight: 500;
+  text-transform: none; letter-spacing: 0; }
+.inventory-panel .team-header .jct { font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px; }
+.inventory-panel .team-header .team-score { color: var(--muted);
+  margin-left: auto; }
 #log hr.step-sep { border: 0; border-top: 1px solid var(--border);
   margin: 4px 0; height: 0; }
 #log .step-marker { color: var(--muted); font-size: 10px;
@@ -269,14 +285,24 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       </div>
     </div>
     <div id="inventory-panel" class="inventory-panel">
-      {% for a in agents %}
-      <div class="inv-row" data-agent="{{ a }}">
-        <button type="button" class="agent-eye" data-agent="{{ a }}"
-          title="click: toggle in log | dblclick: solo / show-all">&#x1F441;</button>
-        <span class="inv-agent" style="color: {{ agent_color(a) }}">a{{ a }}</span>
-        <span class="inv-role"></span>
-        <span class="inv-hp"></span>
-        <span class="inv-cargo"></span>
+      {% for tg in team_groups %}
+      <div class="team-block" data-team="{{ tg.team }}">
+        <div class="team-header">
+          <span class="team-id">{{ tg.team if tg.team else 'no-team' }}</span>
+          <span class="team-resources"></span>
+          <span class="team-junctions"></span>
+          <span class="team-score" title="score (deferred: no direct source yet)">&ndash;</span>
+        </div>
+        {% for a in tg.agents %}
+        <div class="inv-row" data-agent="{{ a }}">
+          <button type="button" class="agent-eye" data-agent="{{ a }}"
+            title="click: toggle in log | dblclick: solo / show-all">&#x1F441;</button>
+          <span class="inv-agent" style="color: {{ agent_color(a) }}">a{{ a }}</span>
+          <span class="inv-role"></span>
+          <span class="inv-hp"></span>
+          <span class="inv-cargo"></span>
+        </div>
+        {% endfor %}
       </div>
       {% endfor %}
     </div>
@@ -309,11 +335,14 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
 <script type="application/json" id="events">{{ events_json|safe }}</script>
 <script type="application/json" id="inventory-by-agent-step">{{ inventory_by_agent_step_json|safe }}</script>
+<script type="application/json" id="team-by-step">{{ team_by_step_json|safe }}</script>
 <script>
 (function () {
   var events = JSON.parse(document.getElementById('events').textContent);
   var inventoryByAgentStep = JSON.parse(
     document.getElementById('inventory-by-agent-step').textContent);
+  var teamByStep = JSON.parse(
+    document.getElementById('team-by-step').textContent);
   var maxStep = {{ max_step }};
 
   // Compact per-resource glyphs. Hover shows the full name.
@@ -346,6 +375,18 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     if (best < 0) return entries[0];
     return entries[best];
   }
+  function _findLatestTeamSnapshot(team, step) {
+    var entries = teamByStep[team];
+    if (!entries || entries.length === 0) return null;
+    var lo = 0, hi = entries.length - 1, best = -1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (entries[mid].step <= step) { best = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    if (best < 0) return entries[0];
+    return entries[best];
+  }
 
   function _invBadge(key, count, label) {
     var icon = INV_ICONS[key] || key;
@@ -368,6 +409,36 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   function updateInventoryPanel(step) {
     var panel = document.getElementById('inventory-panel');
     if (!panel) return;
+    // Per-team header rendering: shared resources + junction counts.
+    var teamBlocks = panel.querySelectorAll('.team-block');
+    teamBlocks.forEach(function (block) {
+      var team = block.dataset.team || '';
+      var resEl = block.querySelector('.team-resources');
+      var jctEl = block.querySelector('.team-junctions');
+      var hit = team ? _findLatestTeamSnapshot(team, step) : null;
+      if (!hit) {
+        if (resEl) resEl.innerHTML = '';
+        if (jctEl) jctEl.innerHTML = '';
+        return;
+      }
+      var tp = hit.payload || {};
+      if (resEl) {
+        var tr = tp.team_resources || {};
+        var rparts = [];
+        INV_CARGO_KEYS.forEach(function (k) {
+          if (tr[k] !== undefined) rparts.push(_invBadge(k, tr[k], k));
+        });
+        resEl.innerHTML = rparts.join('');
+      }
+      if (jctEl) {
+        var j = tp.junctions || {};
+        var f = j.friendly || 0, en = j.enemy || 0, n = j.neutral || 0;
+        jctEl.innerHTML =
+          '<span class="jct" style="color:#10b981" title="friendly junctions">F:' + f + '</span>' +
+          '<span class="jct" style="color:#ef4444" title="enemy junctions">E:' + en + '</span>' +
+          '<span class="jct" style="color:#94a3b8" title="neutral junctions">N:' + n + '</span>';
+      }
+    });
     var rows = panel.querySelectorAll('.inv-row');
     rows.forEach(function (row) {
       var agent = parseInt(row.dataset.agent, 10);

@@ -1373,3 +1373,78 @@ def test_inventory_panel_js_updates_on_set_step(tmp_path: Path) -> None:
     # JS reads the lookup table and wires into setStep.
     assert "inventoryByAgentStep" in html
     assert "updateInventoryPanel" in html
+
+
+def test_render_groups_agents_by_team(tmp_path: Path) -> None:
+    """Inventory panel should emit one .team-block per unique team id,
+    each containing the .inv-rows for that team's agents."""
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 1, "agent": 0, "stream": "py", "type": "inventory",
+         "payload": {"inventory": {}, "hp": 100, "team": "red"}},
+        {"step": 1, "agent": 1, "stream": "py", "type": "inventory",
+         "payload": {"inventory": {}, "hp": 100, "team": "red"}},
+        {"step": 1, "agent": 2, "stream": "py", "type": "inventory",
+         "payload": {"inventory": {}, "hp": 100, "team": "blue"}},
+        {"step": 1, "agent": 3, "stream": "py", "type": "inventory",
+         "payload": {"inventory": {}, "hp": 100, "team": "blue"}},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=4, events=events)
+    html = render(run_dir).read_text()
+    blocks = re.findall(
+        r'<div class="team-block" data-team="([^"]*)">(.*?)</div>\s*</div>',
+        html,
+        re.DOTALL,
+    )
+    # Two teams; order is sorted by team id.
+    teams = [t for t, _ in blocks]
+    assert teams == ["blue", "red"]
+    blue_body = blocks[0][1]
+    red_body = blocks[1][1]
+    assert 'data-agent="2"' in blue_body
+    assert 'data-agent="3"' in blue_body
+    assert 'data-agent="0"' not in blue_body
+    assert 'data-agent="0"' in red_body
+    assert 'data-agent="1"' in red_body
+    assert 'data-agent="2"' not in red_body
+
+
+def test_team_header_js_populates_from_team_by_step(tmp_path: Path) -> None:
+    """The `team-by-step` script island is emitted and updateInventoryPanel
+    reads it to render the per-team header."""
+    from cvc_policy.viewer import render
+
+    events = [
+        {"step": 10, "agent": 0, "stream": "py", "type": "inventory",
+         "payload": {
+             "inventory": {},
+             "hp": 100,
+             "team": "red",
+             "team_resources": {"carbon": 7, "heart": 2},
+             "junctions": {"friendly": 3, "enemy": 1, "neutral": 4},
+         }},
+    ]
+    run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
+    html = render(run_dir).read_text()
+    assert 'id="team-by-step"' in html
+    m = re.search(
+        r'<script type="application/json" id="team-by-step">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    assert m is not None
+    data = json.loads(m.group(1))
+    assert "red" in data
+    entry = data["red"][0]
+    assert entry["payload"]["team_resources"] == {"carbon": 7, "heart": 2}
+    assert entry["payload"]["junctions"] == {"friendly": 3, "enemy": 1, "neutral": 4}
+    # JS wires teamByStep through the update function.
+    assert "teamByStep" in html
+    assert "updateInventoryPanel" in html
+    # The template renders a team header placeholder for team resources + junctions.
+    assert 'class="team-header"' in html
+    assert 'class="team-resources"' in html
+    assert 'class="team-junctions"' in html
+    # Score placeholder (deferred — no direct source yet).
+    assert 'class="team-score"' in html
