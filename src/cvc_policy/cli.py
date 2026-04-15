@@ -182,6 +182,20 @@ def _mettascope_dist() -> Path | None:
     return None
 
 
+def _watched_paths(run_dir: Path) -> list[Path]:
+    """Files whose mtime should trigger a browser auto-reload: run
+    artifacts (events.json, result.json) + viewer template/render code."""
+    from cvc_policy import viewer as _viewer_pkg
+
+    viewer_dir = Path(_viewer_pkg.__file__).parent
+    return [
+        run_dir / "events.json",
+        run_dir / "result.json",
+        viewer_dir / "report.html.j2",
+        viewer_dir / "render.py",
+    ]
+
+
 def _make_run_handler(run_dir: Path, mettascope_dist: Path | None):
     """Build a SimpleHTTPRequestHandler that serves two roots:
 
@@ -212,6 +226,50 @@ def _make_run_handler(run_dir: Path, mettascope_dist: Path | None):
                     self.directory = run_dir_str
             self.directory = run_dir_str
             return super().translate_path(path)
+
+        def do_GET(self) -> None:
+            # Re-render the report on every request so edits to the
+            # template/JS/CSS (or fresh events.json writes) show up on
+            # browser reload without restarting the server.
+            req_path = self.path.split("?", 1)[0].split("#", 1)[0]
+            try:
+                if req_path in ("/report.html", "/"):
+                    from cvc_policy.viewer.render import render_html
+
+                    html_bytes = render_html(Path(run_dir_str)).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(html_bytes)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(html_bytes)
+                    return
+                if req_path == "/_mtime":
+                    import time as _time
+
+                    paths = _watched_paths(Path(run_dir_str))
+                    latest = 0.0
+                    for p in paths:
+                        try:
+                            latest = max(latest, p.stat().st_mtime)
+                        except OSError:
+                            pass
+                    body = (
+                        f'{{"mtime": {latest}, "now": {_time.time()}}}'
+                    ).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                super().do_GET()
+            except (BrokenPipeError, ConnectionResetError):
+                # Client closed the connection (very common with the
+                # /_mtime poller navigating away or reloading). Not an
+                # error worth logging.
+                return
 
         def end_headers(self) -> None:
             self.send_header("Cross-Origin-Opener-Policy", "same-origin")

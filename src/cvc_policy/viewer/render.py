@@ -204,6 +204,19 @@ def _agent_ids(events: list[dict[str, Any]], cogs: int) -> list[int]:
 def render(run_dir: Path) -> Path:
     """Render `report.html` inside `run_dir` and return its path."""
     run_dir = Path(run_dir)
+    html = render_html(run_dir)
+    out = run_dir / "report.html"
+    out.write_text(html)
+    return out
+
+
+def render_html(run_dir: Path) -> str:
+    """Build the report HTML in memory without touching disk.
+
+    Used by the live HTTP handler so concurrent requests don't race on a
+    shared on-disk `report.html`.
+    """
+    run_dir = Path(run_dir)
     events_path = run_dir / "events.json"
     result_path = run_dir / "result.json"
     events: list[dict[str, Any]] = (
@@ -361,7 +374,4 @@ def render(run_dir: Path) -> Path:
     env = _env()
     env.globals["agent_color"] = agent_color
     env.globals["role_glyph"] = role_glyph
-    html = env.get_template("report.html.j2").render(**ctx)
-    out = run_dir / "report.html"
-    out.write_text(html)
-    return out
+    return env.get_template("report.html.j2").render(**ctx)
