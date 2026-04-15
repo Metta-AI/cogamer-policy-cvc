@@ -218,6 +218,46 @@ def test_inventory_event_omits_team_fields_cleanly_when_unavailable():
     assert "junctions" not in p
 
 
+def test_cap_discovered_fires_with_kind_heart_on_aligner_plateau():
+    """When the aligner's heart count plateaus after a pickup attempt, a
+    `cap_discovered` event with `payload.kind == "heart"` fires via the
+    HeartCapTracker callback plumbed through CvCPolicyImpl."""
+    impl, state = _make_impl()
+    # Driving the tracker directly proves the end-to-end wiring: constructor
+    # forwards on_heart_cap_discovery → CogletAgentPolicy → HeartCapTracker,
+    # whose callback emits the recorder event with kind=heart.
+    gs = impl.initial_agent_state().game_state
+    # `gs` is a real GameState here (not the stub); drive its tracker.
+    for i, h in enumerate([0, 1, 2, 3, 3]):
+        gs.engine._heart_cap.observe(
+            gear_sig=("aligner",), hearts=h, tried_pickup_last_tick=i > 0
+        )
+    heart_caps = [
+        e for e in impl._recorder.events
+        if e["type"] == "cap_discovered" and e["payload"].get("kind") == "heart"
+    ]
+    assert len(heart_caps) == 1
+    assert heart_caps[0]["payload"]["gear_sig"] == ["aligner"]
+    assert heart_caps[0]["payload"]["cap"] == 3
+
+
+def test_cap_discovered_cargo_kind_still_emits():
+    """Regression: the pre-existing cargo-cap callback must still fire with
+    payload.kind == 'cargo'."""
+    impl, state = _make_impl()
+    gs = impl.initial_agent_state().game_state
+    for i, c in enumerate([0, 10, 20, 30, 40, 40]):
+        gs.engine._cargo_cap.observe(
+            gear_sig=("miner",), cargo=c, mined_last_tick=i > 0
+        )
+    cargo_caps = [
+        e for e in impl._recorder.events
+        if e["type"] == "cap_discovered" and e["payload"].get("kind") == "cargo"
+    ]
+    assert len(cargo_caps) == 1
+    assert cargo_caps[0]["payload"]["cap"] == 40
+
+
 def test_policyinfos_does_not_leak_across_agents():
     # Two impls sharing the same recorder — each agent's `_infos` reflects
     # only that agent's tick-local policy state (role + summary), never
