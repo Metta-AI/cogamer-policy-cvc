@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from cvc_policy.agent.types import _ELEMENTS, KnownEntity
+from cvc_policy.agent.types import ELEMENTS, KnownEntity
 from mettagrid.policy.policy_env_interface import PolicyEnvInterface
 from mettagrid.sdk.agent import (
     GridPosition,
@@ -31,7 +31,7 @@ def _fake_policy_env_info(num_agents: int = 1) -> PolicyEnvInterface:
 
 
 def _default_shared_inventory() -> dict[str, int]:
-    inv = {r: 10 for r in _ELEMENTS}
+    inv = {r: 10 for r in ELEMENTS}
     inv["heart"] = 5
     return inv
 

@@ -87,7 +87,6 @@ class RolesMixin:
         hearts = int(state.self_state.inventory.get("heart", 0))
         hub = self._nearest_hub(state)  # type: ignore[attr-defined]
         if hearts <= 0:
-            self._clear_target_claim()  # type: ignore[attr-defined]
             self._clear_sticky_target()  # type: ignore[attr-defined]
             if not team_can_refill_hearts(state):
                 return self._miner_action(state, summary_prefix="rebuild_hearts_")
@@ -101,18 +100,15 @@ class RolesMixin:
             hub_position=hub.position if hub else None,
             known_cap=heart_cap,
         ):
-            self._clear_target_claim()  # type: ignore[attr-defined]
             self._clear_sticky_target()  # type: ignore[attr-defined]
             assert hub is not None
             return self._move_to_known(state, hub, summary="batch_hearts", vibe="change_vibe_heart")  # type: ignore[attr-defined]
 
         target = self._preferred_alignable_neutral_junction(state)  # type: ignore[attr-defined]
         if target is not None:
-            self._claim_target(target.position)  # type: ignore[attr-defined]
             self._set_sticky_target(target.position, target.entity_type)  # type: ignore[attr-defined]
             return self._move_to_known(state, target, summary="align_junction", vibe="change_vibe_aligner")  # type: ignore[attr-defined]
 
-        self._clear_target_claim()  # type: ignore[attr-defined]
         self._clear_sticky_target()  # type: ignore[attr-defined]
         if resource_total(state) > 0:
             depot = self._nearest_friendly_depot(state)  # type: ignore[attr-defined]

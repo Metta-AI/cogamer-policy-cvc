@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from cvc_policy.agent.geometry import manhattan
 from cvc_policy.agent.types import (
-    _ELEMENTS,
+    ELEMENTS,
     _EMERGENCY_RESOURCE_LOW,
-    _GEAR_COSTS,
+    GEAR_COSTS,
     _HEART_BATCH_TARGETS,
-    _HP_THRESHOLDS,
+    HP_THRESHOLDS,
 )
 from mettagrid.sdk.agent import MettagridState, SemanticEntity
 
@@ -40,7 +40,7 @@ def has_role_gear(state: MettagridState, role: str) -> bool:
 
 
 def resource_total(state: MettagridState) -> int:
-    return sum(int(state.self_state.inventory.get(resource, 0)) for resource in _ELEMENTS)
+    return sum(int(state.self_state.inventory.get(resource, 0)) for resource in ELEMENTS)
 
 
 def gear_signature(state: MettagridState) -> tuple[str, ...]:
@@ -59,7 +59,7 @@ def team_id(state: MettagridState) -> str:
 def team_min_resource(state: MettagridState) -> int:
     if state.team_summary is None:
         return 0
-    return min(int(state.team_summary.shared_inventory.get(resource, 0)) for resource in _ELEMENTS)
+    return min(int(state.team_summary.shared_inventory.get(resource, 0)) for resource in ELEMENTS)
 
 
 def needs_emergency_mining(state: MettagridState) -> bool:
@@ -71,7 +71,7 @@ def needs_emergency_mining(state: MettagridState) -> bool:
 def resource_priority(state: MettagridState, *, resource_bias: str) -> list[str]:
     shared_inventory = {} if state.team_summary is None else state.team_summary.shared_inventory
     return sorted(
-        _ELEMENTS,
+        ELEMENTS,
         key=lambda resource: (
             int(shared_inventory.get(resource, 0)),
             0 if resource == resource_bias else 1,
@@ -91,7 +91,7 @@ def role_vibe(role: str) -> str:
 
 
 def retreat_threshold(state: MettagridState, role: str) -> int:
-    threshold = _HP_THRESHOLDS[role]
+    threshold = HP_THRESHOLDS[role]
     step = state.step or 0
     if step >= 2_500:
         if role in {"aligner", "scrambler"}:
@@ -141,12 +141,12 @@ def heart_cap_for_role(role: str, *, known_cap: int | None) -> int:
 
 
 def team_can_afford_gear(state: MettagridState, role: str) -> bool:
-    if role not in _GEAR_COSTS:
+    if role not in GEAR_COSTS:
         return True
     if state.team_summary is None:
         return False
     inventory = state.team_summary.shared_inventory
-    return all(int(inventory.get(resource, 0)) >= amount for resource, amount in _GEAR_COSTS[role].items())
+    return all(int(inventory.get(resource, 0)) >= amount for resource, amount in GEAR_COSTS[role].items())
 
 
 def team_can_refill_hearts(state: MettagridState) -> bool:
@@ -155,7 +155,7 @@ def team_can_refill_hearts(state: MettagridState) -> bool:
     inventory = state.team_summary.shared_inventory
     if int(inventory.get("heart", 0)) > 0:
         return True
-    return all(int(inventory.get(resource, 0)) >= 7 for resource in _ELEMENTS)
+    return all(int(inventory.get(resource, 0)) >= 7 for resource in ELEMENTS)
 
 
 def heart_supply_capacity(state: MettagridState) -> int:

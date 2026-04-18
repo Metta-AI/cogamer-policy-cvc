@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from cvc_policy.agent import (
-    _ELEMENTS,
+    ELEMENTS,
     _MOVE_DELTAS,
     KnownEntity,
     absolute_position,
@@ -144,7 +144,7 @@ class NavigationMixin:
                 entity_type=f"{self._resource_bias}_extractor",
                 max_distance=2,
             )
-            for resource_name in _ELEMENTS:
+            for resource_name in ELEMENTS:
                 self._world_model.forget_nearest(
                     position=current,
                     entity_type=f"{resource_name}_extractor",

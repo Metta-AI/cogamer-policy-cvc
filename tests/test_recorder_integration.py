@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from cvc_policy.cogamer_policy import CvCAgentState, CvCPolicyImpl
-from cvc_policy.proglet import Program
+from cvc_policy.programs import Program
 from cvc_policy.recorder import EventRecorder
 from mettagrid.simulator import Action
 from tests.conftest import _fake_policy_env_info

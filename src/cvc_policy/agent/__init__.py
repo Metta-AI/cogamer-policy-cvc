@@ -36,8 +36,7 @@ from cvc_policy.agent.resources import (
 )
 from cvc_policy.agent.scoring import (
     aligner_target_score,
-    is_claimed_by_other,
-    is_usable_recent_extractor,
+    is_usable_extractor,
     scramble_target_score,
     spawn_relative_station_target,
     teammate_closer_to_target,
@@ -49,21 +48,18 @@ from cvc_policy.agent.tick_context import (
     teammate_aligner_positions,
 )
 from cvc_policy.agent.types import (
+    ELEMENTS,
+    GEAR_COSTS,
+    HP_THRESHOLDS,
+    HUB_ALIGN_DISTANCE,
+    JUNCTION_ALIGN_DISTANCE,
+    JUNCTION_AOE_RANGE,
+    KnownEntity,
     _ALIGNER_EXPLORE_OFFSETS,
-    _CLAIMED_TARGET_PENALTY,
-    _ELEMENTS,
     _EMERGENCY_RESOURCE_LOW,
-    _EXTRACTOR_MEMORY_STEPS,
-    _GEAR_COSTS,
     _HEART_BATCH_TARGETS,
-    _HP_THRESHOLDS,
-    _HUB_ALIGN_DISTANCE,
-    _JUNCTION_ALIGN_DISTANCE,
-    _JUNCTION_AOE_RANGE,
     _MINER_EXPLORE_OFFSETS,
     _MOVE_DELTAS,
     _SCRAMBLER_EXPLORE_OFFSETS,
     _STATION_TARGETS_BY_AGENT,
-    _TARGET_CLAIM_STEPS,
-    KnownEntity,
 )

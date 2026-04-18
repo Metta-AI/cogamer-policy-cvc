@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from cvc_policy.agent.geometry import manhattan
 from cvc_policy.agent.scoring import within_alignment_network
 from cvc_policy.agent.types import (
-    _JUNCTION_ALIGN_DISTANCE,
-    _JUNCTION_AOE_RANGE,
+    JUNCTION_ALIGN_DISTANCE,
+    JUNCTION_AOE_RANGE,
     KnownEntity,
 )
 
@@ -117,7 +117,7 @@ def compute_pressure_metrics(
             sum(
                 1
                 for neutral in unreachable_junctions
-                if manhattan(candidate.position, neutral.position) <= _JUNCTION_ALIGN_DISTANCE
+                if manhattan(candidate.position, neutral.position) <= JUNCTION_ALIGN_DISTANCE
             )
             for candidate in frontier_junctions
         ),
@@ -126,7 +126,7 @@ def compute_pressure_metrics(
     best_enemy_scramble_block = max(
         (
             sum(
-                1 for neutral in neutral_junctions if manhattan(enemy.position, neutral.position) <= _JUNCTION_AOE_RANGE
+                1 for neutral in neutral_junctions if manhattan(enemy.position, neutral.position) <= JUNCTION_AOE_RANGE
             )
             for enemy in enemy_junctions
         ),

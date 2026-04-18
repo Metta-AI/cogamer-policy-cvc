@@ -26,16 +26,16 @@ from cvc_policy.agent.resources import (
     team_min_resource,
 )
 from cvc_policy.agent.types import (
-    _ELEMENTS,
+    ELEMENTS,
     _EMERGENCY_RESOURCE_LOW,
-    _GEAR_COSTS,
+    GEAR_COSTS,
     _HEART_BATCH_TARGETS,
-    _HP_THRESHOLDS,
+    HP_THRESHOLDS,
 )
 
 
 def _shared_inventory(resource_value: int = 10, *, heart: int = 5, **overrides: int) -> dict[str, int]:
-    inventory = {resource: resource_value for resource in _ELEMENTS}
+    inventory = {resource: resource_value for resource in ELEMENTS}
     inventory["heart"] = heart
     inventory.update(overrides)
     return inventory
@@ -187,7 +187,7 @@ def test_needs_emergency_mining_triggers_only_when_team_is_low(
         (
             {"shared_inventory": _shared_inventory(5)},
             "nonexistent",
-            sorted(_ELEMENTS),
+            sorted(ELEMENTS),
         ),
         (
             {"team_summary": None},
@@ -231,14 +231,14 @@ def test_role_vibe_variants(role: str, expected: str) -> None:
 @pytest.mark.parametrize(
     ("role", "step", "inventory", "expected"),
     [
-        ("aligner", 100, {"aligner": 1}, _HP_THRESHOLDS["aligner"]),
-        ("miner", 100, {}, _HP_THRESHOLDS["miner"] + 10),
-        ("aligner", 3_000, {"aligner": 1}, _HP_THRESHOLDS["aligner"] + 15),
-        ("scrambler", 3_000, {"scrambler": 1}, _HP_THRESHOLDS["scrambler"] + 15),
-        ("miner", 3_000, {"miner": 1}, _HP_THRESHOLDS["miner"] + 10),
-        ("scout", 3_000, {"scout": 1}, _HP_THRESHOLDS["scout"]),
-        ("aligner", 2_500, {"aligner": 1}, _HP_THRESHOLDS["aligner"] + 15),
-        ("aligner", 3_000, {}, _HP_THRESHOLDS["aligner"] + 25),
+        ("aligner", 100, {"aligner": 1}, HP_THRESHOLDS["aligner"]),
+        ("miner", 100, {}, HP_THRESHOLDS["miner"] + 10),
+        ("aligner", 3_000, {"aligner": 1}, HP_THRESHOLDS["aligner"] + 15),
+        ("scrambler", 3_000, {"scrambler": 1}, HP_THRESHOLDS["scrambler"] + 15),
+        ("miner", 3_000, {"miner": 1}, HP_THRESHOLDS["miner"] + 10),
+        ("scout", 3_000, {"scout": 1}, HP_THRESHOLDS["scout"]),
+        ("aligner", 2_500, {"aligner": 1}, HP_THRESHOLDS["aligner"] + 15),
+        ("aligner", 3_000, {}, HP_THRESHOLDS["aligner"] + 25),
     ],
 )
 def test_retreat_threshold_cases(
@@ -292,12 +292,12 @@ def test_heart_batch_target_variants(make_state, role: str, expected: int) -> No
     assert heart_batch_target(make_state(), role) == expected
 
 
-@pytest.mark.parametrize("role", list(_GEAR_COSTS))
+@pytest.mark.parametrize("role", list(GEAR_COSTS))
 def test_team_can_afford_gear_with_abundant_resources(make_state, role: str) -> None:
     assert team_can_afford_gear(make_state(shared_inventory=_shared_inventory(20)), role) is True
 
 
-@pytest.mark.parametrize("role", list(_GEAR_COSTS))
+@pytest.mark.parametrize("role", list(GEAR_COSTS))
 def test_team_cannot_afford_gear_with_zero_resources(make_state, role: str) -> None:
     assert team_can_afford_gear(make_state(shared_inventory=_shared_inventory(0, heart=0)), role) is False
 
@@ -305,8 +305,8 @@ def test_team_cannot_afford_gear_with_zero_resources(make_state, role: str) -> N
 @pytest.mark.parametrize(
     ("state_kwargs", "role", "expected"),
     [
-        ({"shared_inventory": dict(_GEAR_COSTS["aligner"])}, "aligner", True),
-        ({"shared_inventory": _one_short(_GEAR_COSTS["aligner"])}, "aligner", False),
+        ({"shared_inventory": dict(GEAR_COSTS["aligner"])}, "aligner", True),
+        ({"shared_inventory": _one_short(GEAR_COSTS["aligner"])}, "aligner", False),
         ({"team_summary": None}, "aligner", False),
         ({}, "wizard", True),
     ],

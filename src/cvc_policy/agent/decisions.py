@@ -50,7 +50,6 @@ def check_retreat(ctx: TickContext, role: str, engine: CvcEngine) -> tuple[Actio
     """Retreat to hub when HP is dangerously low."""
     if not engine._should_retreat(ctx.state, role, ctx.hub):
         return None
-    engine._clear_target_claim()
     engine._clear_sticky_target()
     if ctx.hub is not None and ctx.hub_distance > 2:
         return engine._move_to_known(ctx.state, ctx.hub, summary="retreat_to_hub")
@@ -90,7 +89,6 @@ def check_gear_delay(ctx: TickContext, role: str, engine: CvcEngine) -> tuple[Ac
         return None
     if ctx.step >= _ALIGNER_GEAR_DELAY_STEPS:
         return None
-    engine._clear_target_claim()
     engine._clear_sticky_target()
     return engine._miner_action(ctx.state, summary_prefix="delay_gear_")
 
@@ -99,7 +97,6 @@ def check_gear_acquisition(ctx: TickContext, role: str, engine: CvcEngine) -> tu
     """Acquire role gear, or mine to fund it if team can't afford."""
     if has_role_gear(ctx.state, role):
         return None
-    engine._clear_target_claim()
     engine._clear_sticky_target()
     if not team_can_afford_gear(ctx.state, role):
         return engine._miner_action(ctx.state, summary_prefix=f"fund_{role}_gear_")

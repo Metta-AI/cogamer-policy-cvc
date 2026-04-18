@@ -10,12 +10,13 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from cvc_policy.agent import (
+    ELEMENTS,
     KnownEntity,
     absolute_position,
     gear_signature,
     has_role_gear,
     inventory_signature,
-    is_usable_recent_extractor,
+    is_usable_extractor,
     needs_emergency_mining,
     resource_priority,
     resource_total,
@@ -31,7 +32,6 @@ from mettagrid.simulator import Action
 from mettagrid.simulator.interface import AgentObservation
 
 _COGSGUARD_SURFACE = CogsguardSemanticSurface()
-_ELEMENTS = ("carbon", "oxygen", "germanium", "silicon")
 
 
 class GameState:
@@ -299,7 +299,7 @@ class GameState:
         return self.world_model.nearest(
             position=current_pos,
             entity_type=f"{resource}_extractor",
-            predicate=lambda e: is_usable_recent_extractor(e, step=self.step_index),
+            predicate=lambda e: is_usable_extractor(e),
         )
 
     def known_junctions(self, predicate: Any = None) -> list[KnownEntity]:

@@ -194,7 +194,6 @@ class TestCheckRetreat:
         engine._should_retreat.return_value = True
         result = check_retreat(ctx, "miner", engine)
         assert result is not None
-        engine._clear_target_claim.assert_called_once()
         engine._clear_sticky_target.assert_called_once()
 
     def test_skips_when_safe(self):

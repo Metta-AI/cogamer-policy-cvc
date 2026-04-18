@@ -8,29 +8,24 @@ function returns a dict[str, Program] with query, action, and decision programs.
 from __future__ import annotations
 
 import json
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
-try:
-    from cvc_policy.proglet import Program
-except ImportError:
-    from dataclasses import dataclass
-    from dataclasses import field as _field
-    from typing import Callable
-
-    @dataclass  # type: ignore[no-redef]
-    class Program:  # type: ignore[no-redef]
-        executor: str = "python"
-        fn: Callable | None = None
-        system: str | Callable | None = None
-        tools: list[str] = _field(default_factory=list)
-        parser: Callable | None = None
-        config: dict[str, Any] = _field(default_factory=dict)
+from cvc_policy.agent import ELEMENTS, KnownEntity, manhattan, team_id
 
 
-from cvc_policy.agent import KnownEntity, manhattan, team_id
+@dataclass
+class Program:
+    """A named unit of computation with executor-specific configuration."""
+
+    executor: str = "code"
+    fn: Callable | None = None
+    system: str | Callable[..., str] | None = None
+    tools: list[str] = field(default_factory=list)
+    parser: Callable[[str], Any] | None = None
+    config: dict[str, Any] = field(default_factory=dict)
 from mettagrid.simulator import Action
 
-_ELEMENTS = ("carbon", "oxygen", "germanium", "silicon")
 
 # ---------------------------------------------------------------------------
 # Query programs — read from GameState (which delegates to engine)
@@ -59,8 +54,8 @@ def _resource_bias(gs: Any) -> str:
 
 def _team_resources(gs: Any) -> dict[str, int]:
     if gs.mg_state.team_summary is None:
-        return {e: 0 for e in _ELEMENTS}
-    return {e: int(gs.mg_state.team_summary.shared_inventory.get(e, 0)) for e in _ELEMENTS}
+        return {e: 0 for e in ELEMENTS}
+    return {e: int(gs.mg_state.team_summary.shared_inventory.get(e, 0)) for e in ELEMENTS}
 
 
 def _resource_priority(gs: Any) -> list[str]:
@@ -292,7 +287,7 @@ def _parse_analysis(text: str) -> dict:
             json_str = text[start:end]
         directive = json.loads(json_str)
         if isinstance(directive, dict):
-            if directive.get("resource_bias") in _ELEMENTS:
+            if directive.get("resource_bias") in ELEMENTS:
                 result["resource_bias"] = directive["resource_bias"]
             if directive.get("role") in {"miner", "aligner", "scrambler"}:
                 result["role"] = directive["role"]

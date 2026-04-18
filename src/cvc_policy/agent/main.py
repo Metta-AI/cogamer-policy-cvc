@@ -11,7 +11,7 @@ from collections import deque
 from typing import Any
 
 from cvc_policy.agent import (
-    _ELEMENTS,
+    ELEMENTS,
     absolute_position,
     format_position,
     heart_batch_target,
@@ -56,7 +56,6 @@ class CvcEngine(RolesMixin, NavigationMixin, TargetingMixin, PressureMixin, Junc
         # In tournament/run mode, agent IDs may be 8-15 for the second team.
         self._role_id = agent_id % 8
         self._world_model = world_model
-        self._claims: dict[tuple[int, int], tuple[int, int]] = {}
         self._junctions: dict[tuple[int, int], tuple[str | None, int]] = {}
         self._events: list[Any] = []
         self._previous_state: MettagridState | None = None
@@ -68,7 +67,7 @@ class CvcEngine(RolesMixin, NavigationMixin, TargetingMixin, PressureMixin, Junc
         self._vibe_actions = set(policy_env_info.vibe_action_names)
         self._fallback_action = "noop" if "noop" in self._action_names else policy_env_info.action_names[0]
         self._explore_index = 0
-        self._default_resource_bias = _ELEMENTS[self._role_id % len(_ELEMENTS)]
+        self._default_resource_bias = ELEMENTS[self._role_id % len(ELEMENTS)]
         self._resource_bias = self._default_resource_bias
         self._last_inventory_signature: tuple[tuple[str, int], ...] | None = None
         self._stalled_steps = 0
@@ -76,7 +75,6 @@ class CvcEngine(RolesMixin, NavigationMixin, TargetingMixin, PressureMixin, Junc
         self._recent_navigation: deque[NavigationObservation] = deque(maxlen=6)
         self._current_target_position: tuple[int, int] | None = None
         self._current_target_kind: str | None = None
-        self._claimed_target: tuple[int, int] | None = None
         self._sticky_target_position: tuple[int, int] | None = None
         self._sticky_target_kind: str | None = None
         self._hotspots: dict[tuple[int, int], int] = {}
@@ -158,7 +156,6 @@ class CvcEngine(RolesMixin, NavigationMixin, TargetingMixin, PressureMixin, Junc
         self._stalled_steps = 0
         self._oscillation_steps = 0
         self._recent_navigation.clear()
-        self._clear_target_claim()
         self._clear_sticky_target()
         self._hotspots.clear()
         self._current_directive = MacroDirective()
@@ -173,7 +170,7 @@ class CvcEngine(RolesMixin, NavigationMixin, TargetingMixin, PressureMixin, Junc
 
     def _sanitize_macro_directive(self, directive: MacroDirective) -> MacroDirective:
         role = directive.role if directive.role in {"miner", "aligner", "scrambler", "scout"} else None
-        resource_bias = directive.resource_bias if directive.resource_bias in _ELEMENTS else None
+        resource_bias = directive.resource_bias if directive.resource_bias in ELEMENTS else None
         note = directive.note.strip()
         objective = directive.objective.strip() if directive.objective is not None else None
         target_entity_id = directive.target_entity_id.strip() if directive.target_entity_id is not None else None
@@ -195,9 +192,8 @@ class CvcEngine(RolesMixin, NavigationMixin, TargetingMixin, PressureMixin, Junc
         return run_pipeline(ctx, role, self)
 
     def _clear_targets_for_role(self, role: str) -> None:
-        """Reset target claims when switching to an incompatible role."""
+        """Reset sticky targets when switching to an incompatible role."""
         if role not in {"aligner", "miner"}:
-            self._clear_target_claim()
             self._clear_sticky_target()
         elif role == "aligner" and self._sticky_target_kind not in {None, "junction"}:
             self._clear_sticky_target()

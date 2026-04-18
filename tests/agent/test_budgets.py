@@ -10,7 +10,7 @@ from cvc_policy.agent.budgets import (
     compute_pressure_metrics,
     compute_retreat_margin,
 )
-from cvc_policy.agent.types import _JUNCTION_ALIGN_DISTANCE
+from cvc_policy.agent.types import JUNCTION_ALIGN_DISTANCE
 
 # ---------------------------------------------------------------------------
 # assign_role
@@ -449,8 +449,8 @@ class TestComputePressureMetrics:
     def test_frontier_junctions_within_align_distance(self, make_entity):
         # Friendly junction at (50, 50), neutral at (50, 50 + ALIGN_DIST) → within range
         source = make_entity(entity_type="junction", x=50, y=50, team="team_0")
-        near = make_entity(x=50, y=50 + _JUNCTION_ALIGN_DISTANCE)
-        far = make_entity(x=50, y=50 + _JUNCTION_ALIGN_DISTANCE + 1)
+        near = make_entity(x=50, y=50 + JUNCTION_ALIGN_DISTANCE)
+        far = make_entity(x=50, y=50 + JUNCTION_ALIGN_DISTANCE + 1)
         m = compute_pressure_metrics(
             friendly_sources=[source],
             neutral_junctions=[near, far],
@@ -459,7 +459,7 @@ class TestComputePressureMetrics:
         assert m.frontier_neutral_junctions == 1
 
     def test_hub_source_uses_larger_align_distance(self, make_entity):
-        # Hub has _HUB_ALIGN_DISTANCE=25, junction has 15
+        # Hub has HUB_ALIGN_DISTANCE=25, junction has 15
         hub = make_entity(entity_type="hub", x=50, y=50, team="team_0")
         # Distance 20: within hub range (25) but outside junction range (15)
         neutral = make_entity(x=50, y=70)
@@ -472,7 +472,7 @@ class TestComputePressureMetrics:
 
     def test_best_frontier_coverage(self, make_entity):
         # Source at origin, one frontier neutral at (10,0), two unreachable at (20,5) and (22,0)
-        # Frontier neutral (10,0) covers unreachable within _JUNCTION_ALIGN_DISTANCE of it
+        # Frontier neutral (10,0) covers unreachable within JUNCTION_ALIGN_DISTANCE of it
         source = make_entity(entity_type="junction", x=0, y=0, team="team_0")
         frontier = make_entity(x=10, y=0)  # dist 10 from source, within 15
         # unreachable neutrals far from source but near frontier

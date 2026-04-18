@@ -1,16 +1,14 @@
-"""Target selection and claim management mixin."""
+"""Target selection mixin."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from cvc_policy.agent import (
-    _TARGET_CLAIM_STEPS,
     KnownEntity,
     absolute_position,
     aligner_target_score,
-    is_claimed_by_other,
-    is_usable_recent_extractor,
+    is_usable_extractor,
     manhattan,
     resource_priority,
     scramble_target_score,
@@ -28,32 +26,14 @@ _TARGET_SWITCH_THRESHOLD = 3.0
 
 class TargetingMixin:
     _world_model: WorldModel
-    _claims: dict[tuple[int, int], tuple[int, int]]
     _hotspots: dict[tuple[int, int], int]
     _agent_id: int
     _step_index: int
-    _claimed_target: tuple[int, int] | None
     _sticky_target_position: tuple[int, int] | None
     _sticky_target_kind: str | None
     _current_directive: MacroDirective
     _resource_bias: str
     _stalled_steps: int
-
-    # ── Claim management ────────────────────────────────────────────
-
-    def _claim_target(self, target: tuple[int, int]) -> None:
-        self._clear_stale_claims()
-        self._clear_target_claim()
-        self._claims[target] = (self._agent_id, self._step_index)
-        self._claimed_target = target
-
-    def _clear_target_claim(self) -> None:
-        if self._claimed_target is None:
-            return
-        claim = self._claims.get(self._claimed_target)
-        if claim is not None and claim[0] == self._agent_id:
-            self._claims.pop(self._claimed_target)
-        self._claimed_target = None
 
     def _set_sticky_target(self, position: tuple[int, int], entity_type: str) -> None:
         self._sticky_target_position = position
@@ -62,13 +42,6 @@ class TargetingMixin:
     def _clear_sticky_target(self) -> None:
         self._sticky_target_position = None
         self._sticky_target_kind = None
-
-    def _clear_stale_claims(self) -> None:
-        stale_positions = [
-            position for position, (_, step) in self._claims.items() if self._step_index - step > _TARGET_CLAIM_STEPS
-        ]
-        for position in stale_positions:
-            self._claims.pop(position)
 
     # ── Directive targeting ─────────────────────────────────────────
 
@@ -144,12 +117,6 @@ class TargetingMixin:
                     candidate=entity,
                     unreachable=unreachable,
                     enemy_junctions=enemy_junctions,
-                    claimed_by_other=is_claimed_by_other(
-                        claims=self._claims,
-                        candidate=entity.position,
-                        agent_id=self._agent_id,
-                        step=self._step_index,
-                    ),
                     hub_position=hub_pos,
                     friendly_sources=network_sources,
                     hotspot_count=self._hotspots.get(entity.position, 0),
@@ -191,7 +158,6 @@ class TargetingMixin:
             candidate=sticky,
             unreachable=[entity for entity in neutral_junctions if entity.position != sticky.position],
             enemy_junctions=enemy_junctions,
-            claimed_by_other=False,
             hub_position=hub_pos,
             friendly_sources=network_sources,
             hotspot_count=self._hotspots.get(sticky.position, 0),
@@ -201,12 +167,6 @@ class TargetingMixin:
             candidate=candidate,
             unreachable=[entity for entity in neutral_junctions if entity.position != candidate.position],
             enemy_junctions=enemy_junctions,
-            claimed_by_other=is_claimed_by_other(
-                claims=self._claims,
-                candidate=candidate.position,
-                agent_id=self._agent_id,
-                step=self._step_index,
-            ),
             hub_position=hub_pos,
             friendly_sources=network_sources,
             hotspot_count=self._hotspots.get(candidate.position, 0),
@@ -249,7 +209,7 @@ class TargetingMixin:
         for resource_name in resource_priority(state, resource_bias=self._resource_bias):
             matches = self._world_model.entities(
                 entity_type=f"{resource_name}_extractor",
-                predicate=lambda entity: is_usable_recent_extractor(entity, step=state.step or self._step_index),
+                predicate=lambda entity: is_usable_extractor(entity),
             )
             candidates.extend(
                 sorted(
@@ -295,7 +255,7 @@ class TargetingMixin:
                 entity
                 for entity in self._world_model.entities(
                     entity_type=self._sticky_target_kind,
-                    predicate=lambda entity: is_usable_recent_extractor(entity, step=state.step or self._step_index),
+                    predicate=lambda entity: is_usable_extractor(entity),
                 )
                 if entity.position == self._sticky_target_position
             ),

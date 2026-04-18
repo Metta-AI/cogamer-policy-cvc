@@ -4,21 +4,17 @@ from __future__ import annotations
 
 from cvc_policy.agent.scoring import (
     aligner_target_score,
-    is_claimed_by_other,
-    is_usable_recent_extractor,
+    is_usable_extractor,
     scramble_target_score,
     spawn_relative_station_target,
     teammate_closer_to_target,
     within_alignment_network,
 )
 from cvc_policy.agent.types import (
-    _CLAIMED_TARGET_PENALTY,
-    _EXTRACTOR_MEMORY_STEPS,
-    _HUB_ALIGN_DISTANCE,
-    _JUNCTION_ALIGN_DISTANCE,
-    _JUNCTION_AOE_RANGE,
+    HUB_ALIGN_DISTANCE,
+    JUNCTION_ALIGN_DISTANCE,
+    JUNCTION_AOE_RANGE,
     _STATION_TARGETS_BY_AGENT,
-    _TARGET_CLAIM_STEPS,
 )
 
 # ---------------------------------------------------------------------------
@@ -29,33 +25,33 @@ from cvc_policy.agent.types import (
 class TestWithinAlignmentNetwork:
     def test_within_hub_distance(self, make_entity):
         hub = make_entity(entity_type="hub", x=50, y=50)
-        candidate = (50 + _HUB_ALIGN_DISTANCE, 50)
+        candidate = (50 + HUB_ALIGN_DISTANCE, 50)
         assert within_alignment_network(candidate, [hub]) is True
 
     def test_outside_hub_distance(self, make_entity):
         hub = make_entity(entity_type="hub", x=50, y=50)
-        candidate = (50 + _HUB_ALIGN_DISTANCE + 1, 50)
+        candidate = (50 + HUB_ALIGN_DISTANCE + 1, 50)
         assert within_alignment_network(candidate, [hub]) is False
 
     def test_within_junction_distance(self, make_entity):
         junction = make_entity(entity_type="junction", x=50, y=50)
-        candidate = (50 + _JUNCTION_ALIGN_DISTANCE, 50)
+        candidate = (50 + JUNCTION_ALIGN_DISTANCE, 50)
         assert within_alignment_network(candidate, [junction]) is True
 
     def test_outside_junction_distance(self, make_entity):
         junction = make_entity(entity_type="junction", x=50, y=50)
-        candidate = (50 + _JUNCTION_ALIGN_DISTANCE + 1, 50)
+        candidate = (50 + JUNCTION_ALIGN_DISTANCE + 1, 50)
         assert within_alignment_network(candidate, [junction]) is False
 
     def test_exact_boundary_hub(self, make_entity):
         hub = make_entity(entity_type="hub", x=0, y=0)
-        # Manhattan distance exactly _HUB_ALIGN_DISTANCE
-        candidate = (_HUB_ALIGN_DISTANCE, 0)
+        # Manhattan distance exactly HUB_ALIGN_DISTANCE
+        candidate = (HUB_ALIGN_DISTANCE, 0)
         assert within_alignment_network(candidate, [hub]) is True
 
     def test_exact_boundary_junction(self, make_entity):
         junction = make_entity(entity_type="junction", x=0, y=0)
-        candidate = (_JUNCTION_ALIGN_DISTANCE, 0)
+        candidate = (JUNCTION_ALIGN_DISTANCE, 0)
         assert within_alignment_network(candidate, [junction]) is True
 
     def test_empty_sources(self):
@@ -64,7 +60,7 @@ class TestWithinAlignmentNetwork:
     def test_multiple_sources_one_in_range(self, make_entity):
         far_junction = make_entity(entity_type="junction", x=0, y=0)
         close_hub = make_entity(entity_type="hub", x=50, y=50)
-        candidate = (50, 50 + _HUB_ALIGN_DISTANCE)
+        candidate = (50, 50 + HUB_ALIGN_DISTANCE)
         assert within_alignment_network(candidate, [far_junction, close_hub]) is True
 
     def test_multiple_sources_none_in_range(self, make_entity):
@@ -74,11 +70,11 @@ class TestWithinAlignmentNetwork:
         assert within_alignment_network(candidate, [j1, j2]) is False
 
     def test_hub_uses_hub_distance_not_junction(self, make_entity):
-        """Hub sources use _HUB_ALIGN_DISTANCE which is larger than junction."""
+        """Hub sources use HUB_ALIGN_DISTANCE which is larger than junction."""
         hub = make_entity(entity_type="hub", x=50, y=50)
         # Between junction and hub distance
-        candidate = (50 + _JUNCTION_ALIGN_DISTANCE + 1, 50)
-        assert _JUNCTION_ALIGN_DISTANCE < _HUB_ALIGN_DISTANCE
+        candidate = (50 + JUNCTION_ALIGN_DISTANCE + 1, 50)
+        assert JUNCTION_ALIGN_DISTANCE < HUB_ALIGN_DISTANCE
         assert within_alignment_network(candidate, [hub]) is True
 
     def test_same_position(self, make_entity):
@@ -88,8 +84,8 @@ class TestWithinAlignmentNetwork:
     def test_diagonal_manhattan_distance(self, make_entity):
         junction = make_entity(entity_type="junction", x=50, y=50)
         # Split distance across both axes
-        half = _JUNCTION_ALIGN_DISTANCE // 2
-        remainder = _JUNCTION_ALIGN_DISTANCE - half
+        half = JUNCTION_ALIGN_DISTANCE // 2
+        remainder = JUNCTION_ALIGN_DISTANCE - half
         candidate = (50 + half, 50 + remainder)
         assert within_alignment_network(candidate, [junction]) is True
 
@@ -175,31 +171,25 @@ class TestAlignerTargetScore:
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         # distance = 10, no penalties/bonuses
         assert score == 10.0
         assert neg_expansion == 0.0
 
     def test_expansion_reduces_score(self, make_entity):
         candidate = make_entity(entity_type="junction", x=10, y=0)
-        # Place unreachable entities within _JUNCTION_ALIGN_DISTANCE of candidate
-        nearby = make_entity(entity_type="junction", x=10 + _JUNCTION_ALIGN_DISTANCE, y=0)
+        # Place unreachable entities within JUNCTION_ALIGN_DISTANCE of candidate
+        nearby = make_entity(entity_type="junction", x=10 + JUNCTION_ALIGN_DISTANCE, y=0)
         score_with, neg_exp = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[nearby],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         score_without, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         assert score_with < score_without
         assert neg_exp == -1.0
 
@@ -211,68 +201,41 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=unreachable,
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         # distance=0, expansion capped at -30, score = 0 - 30 = -30
         assert score == -30.0
         assert neg_exp == -10.0
 
     def test_enemy_aoe_penalty(self, make_entity):
         candidate = make_entity(entity_type="junction", x=10, y=0)
-        enemy = make_entity(entity_type="junction", x=10 + _JUNCTION_AOE_RANGE, y=0)
+        enemy = make_entity(entity_type="junction", x=10 + JUNCTION_AOE_RANGE, y=0)
         score_with_enemy, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[enemy],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[enemy],        )
         score_without, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         assert score_with_enemy == score_without + 8.0
 
     def test_enemy_outside_aoe_no_penalty(self, make_entity):
         candidate = make_entity(entity_type="junction", x=10, y=0)
-        enemy = make_entity(entity_type="junction", x=10 + _JUNCTION_AOE_RANGE + 1, y=0)
+        enemy = make_entity(entity_type="junction", x=10 + JUNCTION_AOE_RANGE + 1, y=0)
         score_with, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[enemy],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[enemy],        )
         score_without, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         assert score_with == score_without
 
-    def test_claimed_penalty(self, make_entity):
-        candidate = make_entity(entity_type="junction", x=10, y=0)
-        score_claimed, _ = aligner_target_score(
-            current_position=(0, 0),
-            candidate=candidate,
-            unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=True,
-        )
-        score_unclaimed, _ = aligner_target_score(
-            current_position=(0, 0),
-            candidate=candidate,
-            unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
-        assert score_claimed == score_unclaimed + _CLAIMED_TARGET_PENALTY
 
     def test_hub_penalty_close(self, make_entity):
         """Hub distance <= 10: penalty = hub_dist * 0.3"""
@@ -282,9 +245,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hub_position=hub_pos,
+            enemy_junctions=[],            hub_position=hub_pos,
         )
         # distance=5, hub_penalty=5*0.3=1.5
         assert score == 5.0 + 1.5
@@ -297,9 +258,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hub_position=hub_pos,
+            enemy_junctions=[],            hub_position=hub_pos,
         )
         # distance=12, hub_penalty=(12-10)*1.5+2.0=5.0
         assert score == 12.0 + 5.0
@@ -312,9 +271,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hub_position=hub_pos,
+            enemy_junctions=[],            hub_position=hub_pos,
         )
         # distance=20, hub_penalty=(20-15)*3.0+10.0=25.0
         assert score == 20.0 + 25.0
@@ -327,9 +284,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hub_position=hub_pos,
+            enemy_junctions=[],            hub_position=hub_pos,
         )
         # distance=30, hub_penalty=(30-25)*8.0+50.0=90.0
         assert score == 30.0 + 90.0
@@ -340,9 +295,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hub_position=None,
+            enemy_junctions=[],            hub_position=None,
         )
         # distance=30, no hub penalty
         assert score == 30.0
@@ -353,17 +306,13 @@ class TestAlignerTargetScore:
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hotspot_count=2,
+            enemy_junctions=[],            hotspot_count=2,
         )
         score_no_hotspot, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hotspot_count=0,
+            enemy_junctions=[],            hotspot_count=0,
         )
         # default hotspot_weight=8.0 (no hub), penalty = min(2,3)*8 = 16
         assert score_hotspot == score_no_hotspot + 16.0
@@ -374,17 +323,13 @@ class TestAlignerTargetScore:
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hotspot_count=3,
+            enemy_junctions=[],            hotspot_count=3,
         )
         score_5, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hotspot_count=5,
+            enemy_junctions=[],            hotspot_count=5,
         )
         assert score_3 == score_5
 
@@ -396,9 +341,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            hub_position=hub_pos,
+            enemy_junctions=[],            hub_position=hub_pos,
             hotspot_count=2,
         )
         # distance=5, hub_penalty=5*0.3=1.5, hotspot=min(2,3)*2.0=4.0
@@ -406,22 +349,18 @@ class TestAlignerTargetScore:
 
     def test_network_bonus(self, make_entity):
         candidate = make_entity(entity_type="junction", x=50, y=50)
-        friendly = make_entity(entity_type="junction", x=50 + _JUNCTION_ALIGN_DISTANCE, y=50)
+        friendly = make_entity(entity_type="junction", x=50 + JUNCTION_ALIGN_DISTANCE, y=50)
         score_with, _ = aligner_target_score(
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            friendly_sources=[friendly],
+            enemy_junctions=[],            friendly_sources=[friendly],
         )
         score_without, _ = aligner_target_score(
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         # 1 nearby friendly * 0.5 = 0.5 bonus (lower score)
         assert score_with == score_without - 0.5
 
@@ -432,17 +371,13 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            friendly_sources=[hub],
+            enemy_junctions=[],            friendly_sources=[hub],
         )
         score_without, _ = aligner_target_score(
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         assert score_with == score_without  # hub excluded from network bonus
 
     def test_network_bonus_capped_at_4(self, make_entity):
@@ -452,9 +387,7 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            friendly_sources=friendlies,
+            enemy_junctions=[],            friendly_sources=friendlies,
         )
         # Capped at 4 * 0.5 = 2.0
         assert score == 0.0 - 2.0
@@ -465,17 +398,13 @@ class TestAlignerTargetScore:
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            teammate_closer=True,
+            enemy_junctions=[],            teammate_closer=True,
         )
         score_not, _ = aligner_target_score(
             current_position=(0, 0),
             candidate=candidate,
             unreachable=[],
-            enemy_junctions=[],
-            claimed_by_other=False,
-            teammate_closer=False,
+            enemy_junctions=[],            teammate_closer=False,
         )
         assert score_closer == score_not + 6.0
 
@@ -487,115 +416,28 @@ class TestAlignerTargetScore:
             current_position=(50, 50),
             candidate=candidate,
             unreachable=[nearby1, nearby2],
-            enemy_junctions=[],
-            claimed_by_other=False,
-        )
+            enemy_junctions=[],        )
         assert neg_exp == -2.0
 
 
 # ---------------------------------------------------------------------------
-# is_claimed_by_other
-# ---------------------------------------------------------------------------
-
-
-class TestIsClaimedByOther:
-    def test_no_claim(self):
-        assert is_claimed_by_other(claims={}, candidate=(10, 10), agent_id=0, step=100) is False
-
-    def test_claimed_by_self(self):
-        claims = {(10, 10): (0, 100)}
-        assert is_claimed_by_other(claims=claims, candidate=(10, 10), agent_id=0, step=100) is False
-
-    def test_claimed_by_other_recent(self):
-        claims = {(10, 10): (1, 100)}
-        assert (
-            is_claimed_by_other(claims=claims, candidate=(10, 10), agent_id=0, step=100 + _TARGET_CLAIM_STEPS) is True
-        )
-
-    def test_claimed_by_other_expired(self):
-        claims = {(10, 10): (1, 100)}
-        assert (
-            is_claimed_by_other(claims=claims, candidate=(10, 10), agent_id=0, step=100 + _TARGET_CLAIM_STEPS + 1)
-            is False
-        )
-
-    def test_claim_at_exact_boundary(self):
-        claims = {(10, 10): (1, 100)}
-        # step - owner_step == _TARGET_CLAIM_STEPS => still claimed
-        assert (
-            is_claimed_by_other(claims=claims, candidate=(10, 10), agent_id=0, step=100 + _TARGET_CLAIM_STEPS) is True
-        )
-
-    def test_different_candidate_not_claimed(self):
-        claims = {(10, 10): (1, 100)}
-        assert is_claimed_by_other(claims=claims, candidate=(20, 20), agent_id=0, step=100) is False
-
-
-# ---------------------------------------------------------------------------
-# is_usable_recent_extractor
-# ---------------------------------------------------------------------------
-
-
-class TestIsUsableRecentExtractor:
-    def test_recent_extractor(self, make_entity):
-        entity = make_entity(entity_type="extractor", last_seen_step=100)
-        assert is_usable_recent_extractor(entity, step=100 + _EXTRACTOR_MEMORY_STEPS) is True
-
-    def test_old_extractor(self, make_entity):
-        entity = make_entity(entity_type="extractor", last_seen_step=100)
-        assert is_usable_recent_extractor(entity, step=100 + _EXTRACTOR_MEMORY_STEPS + 1) is False
-
-    def test_exact_boundary(self, make_entity):
-        entity = make_entity(entity_type="extractor", last_seen_step=100)
-        assert is_usable_recent_extractor(entity, step=100 + _EXTRACTOR_MEMORY_STEPS) is True
-
-    def test_same_step(self, make_entity):
-        entity = make_entity(entity_type="extractor", last_seen_step=500)
-        assert is_usable_recent_extractor(entity, step=500) is True
-
-    def test_future_last_seen(self, make_entity):
-        """Edge case: last_seen_step > step (negative difference)."""
-        entity = make_entity(entity_type="extractor", last_seen_step=600)
-        assert is_usable_recent_extractor(entity, step=500) is True
+class TestIsUsableExtractor:
+    def test_generic_extractor_is_usable(self, make_entity):
+        entity = make_entity(entity_type="extractor")
+        assert is_usable_extractor(entity) is True
 
     def test_empty_extractor_is_skipped(self, make_entity):
-        """A depleted extractor (resource attribute == 0) is not usable, even if recent."""
-        entity = make_entity(
-            entity_type="carbon_extractor",
-            last_seen_step=500,
-            attributes={"carbon": 0},
-        )
-        assert is_usable_recent_extractor(entity, step=500) is False
+        entity = make_entity(entity_type="carbon_extractor", attributes={"carbon": 0})
+        assert is_usable_extractor(entity) is False
 
     def test_nonempty_extractor_is_usable(self, make_entity):
-        """A resource extractor with positive inventory is usable."""
-        entity = make_entity(
-            entity_type="oxygen_extractor",
-            last_seen_step=500,
-            attributes={"oxygen": 42},
-        )
-        assert is_usable_recent_extractor(entity, step=500) is True
+        entity = make_entity(entity_type="oxygen_extractor", attributes={"oxygen": 42})
+        assert is_usable_extractor(entity) is True
 
-    def test_extractor_missing_resource_attribute_is_empty(self, make_entity):
-        """A drained extractor has its resource key *removed* from attributes
-        (not set to 0). Missing resource key therefore means empty, not unknown."""
-        entity = make_entity(entity_type="carbon_extractor", last_seen_step=500)
-        assert is_usable_recent_extractor(entity, step=500) is False
-
-    def test_non_resource_extractor_passes_amount_check(self, make_entity):
-        """An extractor kind that doesn't encode a resource in its type (rare)
-        falls through the amount check since there's nothing to look up."""
-        entity = make_entity(entity_type="extractor", last_seen_step=500)
-        assert is_usable_recent_extractor(entity, step=500) is True
-
-    def test_empty_overrides_recent(self, make_entity):
-        """Even a freshly-seen extractor is skipped if it reports zero inventory."""
-        entity = make_entity(
-            entity_type="germanium_extractor",
-            last_seen_step=500,
-            attributes={"germanium": 0},
-        )
-        assert is_usable_recent_extractor(entity, step=500 + _EXTRACTOR_MEMORY_STEPS // 2) is False
+    def test_missing_resource_attribute_is_empty(self, make_entity):
+        """Drained extractors have the resource key removed, not set to 0."""
+        entity = make_entity(entity_type="carbon_extractor")
+        assert is_usable_extractor(entity) is False
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +460,7 @@ class TestScrambleTargetScore:
 
     def test_blocked_neutrals_bonus(self, make_entity):
         candidate = make_entity(entity_type="junction", x=50, y=50)
-        neutral = make_entity(entity_type="junction", x=50 + _JUNCTION_AOE_RANGE, y=50)
+        neutral = make_entity(entity_type="junction", x=50 + JUNCTION_AOE_RANGE, y=50)
         score, neg_blocked = scramble_target_score(
             current_position=(50, 50),
             hub_position=(50, 50),
@@ -637,7 +479,7 @@ class TestScrambleTargetScore:
 
     def test_neutral_outside_aoe(self, make_entity):
         candidate = make_entity(entity_type="junction", x=50, y=50)
-        neutral = make_entity(entity_type="junction", x=50 + _JUNCTION_AOE_RANGE + 1, y=50)
+        neutral = make_entity(entity_type="junction", x=50 + JUNCTION_AOE_RANGE + 1, y=50)
         _, neg_blocked = scramble_target_score(
             current_position=(50, 50),
             hub_position=(50, 50),
@@ -659,7 +501,7 @@ class TestScrambleTargetScore:
 
     def test_threat_bonus_from_friendly_junctions(self, make_entity):
         candidate = make_entity(entity_type="junction", x=50, y=50)
-        friendly = make_entity(entity_type="junction", x=50 + _JUNCTION_ALIGN_DISTANCE, y=50)
+        friendly = make_entity(entity_type="junction", x=50 + JUNCTION_ALIGN_DISTANCE, y=50)
         score_with, _ = scramble_target_score(
             current_position=(50, 50),
             hub_position=(50, 50),
@@ -677,7 +519,7 @@ class TestScrambleTargetScore:
 
     def test_friendly_outside_align_distance_no_threat(self, make_entity):
         candidate = make_entity(entity_type="junction", x=50, y=50)
-        friendly = make_entity(entity_type="junction", x=50 + _JUNCTION_ALIGN_DISTANCE + 1, y=50)
+        friendly = make_entity(entity_type="junction", x=50 + JUNCTION_ALIGN_DISTANCE + 1, y=50)
         score_with, _ = scramble_target_score(
             current_position=(50, 50),
             hub_position=(50, 50),

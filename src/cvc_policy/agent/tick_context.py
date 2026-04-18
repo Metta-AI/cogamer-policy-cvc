@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from cvc_policy.agent.geometry import manhattan
 from cvc_policy.agent.resources import absolute_position, resource_total, team_id
-from cvc_policy.agent.types import _JUNCTION_AOE_RANGE, KnownEntity
+from cvc_policy.agent.types import JUNCTION_AOE_RANGE, KnownEntity
 from mettagrid.sdk.agent import MettagridState
 
 _NEAR_ENEMY_RADIUS = 20
@@ -98,7 +98,7 @@ def build_tick_context(
         cargo=resource_total(state),
         hub=hub,
         hub_distance=hub_distance,
-        in_enemy_aoe=any(manhattan(position, j.position) <= _JUNCTION_AOE_RANGE for j in enemy_junctions),
+        in_enemy_aoe=any(manhattan(position, j.position) <= JUNCTION_AOE_RANGE for j in enemy_junctions),
         near_enemy_territory=any(manhattan(position, j.position) <= _NEAR_ENEMY_RADIUS for j in enemy_junctions),
         friendly_junctions=friendly_junctions,
         enemy_junctions=enemy_junctions,

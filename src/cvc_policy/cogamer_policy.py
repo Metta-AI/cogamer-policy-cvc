@@ -25,17 +25,12 @@ from typing import Any
 
 from cvc_policy.game_state import GameState
 from cvc_policy.llm_worker import LLMWorker
-from cvc_policy.programs import all_programs
-from cvc_policy.recorder import EventRecorder, fmt
+from cvc_policy.programs import Program, all_programs
+from cvc_policy.recorder import EventRecorder
 from mettagrid.policy.policy import MultiAgentPolicy, StatefulAgentPolicy, StatefulPolicyImpl
 from mettagrid.policy.policy_env_interface import PolicyEnvInterface
 from mettagrid.simulator import Action
 from mettagrid.simulator.interface import AgentObservation
-
-try:
-    from cvc_policy.proglet import Program
-except ImportError:
-    Program = None  # type: ignore[assignment,misc]
 
 _HEARTBEAT_EVERY = 200
 _QUEUE_MAX = 1000

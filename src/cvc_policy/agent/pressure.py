@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from cvc_policy.agent import (
-    _JUNCTION_AOE_RANGE,
+    JUNCTION_AOE_RANGE,
     KnownEntity,
     absolute_position,
     gear_signature,
@@ -114,7 +114,7 @@ class PressureMixin:
             predicate=lambda entity: entity.owner not in {None, "neutral", team_id},
         )
         for enemy in enemies:
-            if manhattan(position, enemy.position) <= _JUNCTION_AOE_RANGE:
+            if manhattan(position, enemy.position) <= JUNCTION_AOE_RANGE:
                 return True
         return False
 
@@ -134,7 +134,7 @@ class PressureMixin:
         if safe_target is None:
             return hp <= retreat_threshold(state, role)
 
-        safe_steps = max(0, manhattan(absolute_position(state), safe_target.position) - _JUNCTION_AOE_RANGE)
+        safe_steps = max(0, manhattan(absolute_position(state), safe_target.position) - JUNCTION_AOE_RANGE)
         current_pos = absolute_position(state)
         team = team_id(state)
         return compute_retreat_margin(

@@ -70,17 +70,17 @@ class TestLeastResource:
         assert _least_resource(resources) == "germanium"
 
     def test_all_equal_returns_first_element(self):
-        # When tied, min() returns the first element checked, which follows _ELEMENTS order
+        # When tied, min() returns the first element checked, which follows ELEMENTS order
         resources = {"carbon": 5, "oxygen": 5, "germanium": 5, "silicon": 5}
         assert _least_resource(resources) == "carbon"
 
     def test_tie_between_non_first_elements(self):
-        # oxygen and silicon tied at 1, oxygen comes first in _ELEMENTS
+        # oxygen and silicon tied at 1, oxygen comes first in ELEMENTS
         resources = {"carbon": 10, "oxygen": 1, "germanium": 5, "silicon": 1}
         assert _least_resource(resources) == "oxygen"
 
     def test_tie_germanium_silicon(self):
-        # germanium comes before silicon in _ELEMENTS
+        # germanium comes before silicon in ELEMENTS
         resources = {"carbon": 10, "oxygen": 10, "germanium": 2, "silicon": 2}
         assert _least_resource(resources) == "germanium"
 

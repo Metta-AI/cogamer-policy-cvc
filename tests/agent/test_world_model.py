@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cvc_policy.agent.scoring import is_usable_recent_extractor
+from cvc_policy.agent.scoring import is_usable_extractor
 from cvc_policy.agent.world_model import WorldModel
 
 
@@ -326,7 +326,7 @@ def test_forget_nearest_removes_only_closest(wm, make_state, make_semantic_entit
 
 # ---------------------------------------------------------------------------
 # End-to-end: miner target selection filters out empty extractors.
-# Exercises the same (WorldModel.entities + is_usable_recent_extractor)
+# Exercises the same (WorldModel.entities + is_usable_extractor)
 # query path used by _preferred_miner_extractor and _sticky_miner_target.
 # ---------------------------------------------------------------------------
 
@@ -340,7 +340,7 @@ def test_query_skips_empty_extractors(wm, make_state, make_semantic_entity):
 
     usable = wm.entities(
         entity_type="carbon_extractor",
-        predicate=lambda e: is_usable_recent_extractor(e, step=10),
+        predicate=lambda e: is_usable_extractor(e),
     )
     assert len(usable) == 1
     assert usable[0].position == (20, 20)
@@ -357,7 +357,7 @@ def test_query_skips_drained_extractor_with_key_removed(wm, make_state, make_sem
 
     usable = wm.entities(
         entity_type="carbon_extractor",
-        predicate=lambda e: is_usable_recent_extractor(e, step=10),
+        predicate=lambda e: is_usable_extractor(e),
     )
     assert [e.position for e in usable] == [(20, 20)]
 
@@ -374,7 +374,7 @@ def test_query_returns_nothing_when_all_extractors_empty(wm, make_state, make_se
 
     usable = wm.entities(
         entity_type="oxygen_extractor",
-        predicate=lambda e: is_usable_recent_extractor(e, step=5),
+        predicate=lambda e: is_usable_extractor(e),
     )
     assert usable == []
 
@@ -386,7 +386,7 @@ def test_query_re_admits_extractor_once_refilled(wm, make_state, make_semantic_e
     assert (
         wm.entities(
             entity_type="germanium_extractor",
-            predicate=lambda e: is_usable_recent_extractor(e, step=10),
+            predicate=lambda e: is_usable_extractor(e),
         )
         == []
     )
@@ -395,7 +395,7 @@ def test_query_re_admits_extractor_once_refilled(wm, make_state, make_semantic_e
     wm.update(make_state(visible_entities=[refilled], step=20))
     usable = wm.entities(
         entity_type="germanium_extractor",
-        predicate=lambda e: is_usable_recent_extractor(e, step=20),
+        predicate=lambda e: is_usable_extractor(e),
     )
     assert len(usable) == 1
     assert usable[0].position == (7, 7)

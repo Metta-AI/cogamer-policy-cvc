@@ -40,7 +40,6 @@ def test_agents_share_no_mutable_state():
     engine_1 = gs_1.engine
 
     # Core mutable dicts must be distinct objects
-    assert id(engine_0._claims) != id(engine_1._claims), "agents share _claims dict"
     assert id(engine_0._junctions) != id(engine_1._junctions), "agents share _junctions dict"
     assert id(engine_0._temp_blocks) != id(engine_1._temp_blocks), "agents share _temp_blocks dict"
 

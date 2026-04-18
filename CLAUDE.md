@@ -15,7 +15,8 @@ softmax cogames play -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy -
 softmax cogames eval -m machina_1 -p class=cvc_policy.cogamer_policy.CvCPolicy -e 10 --format json
 
 # Submit
-cogames upload -p class=cvc_policy.cogamer_policy.CvCPolicy -n <name> --setup-script setup_policy.py
+scripts/submit.sh                         # default: daveey.cvc_policy @ beta-cvc
+scripts/submit.sh <name> <season>         # custom name and season
 ```
 
 ## Key Files
