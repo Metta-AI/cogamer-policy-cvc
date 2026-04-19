@@ -315,13 +315,12 @@ class CvCPolicy(MultiAgentPolicy):
     def _init_llm(self) -> None:
         api_key = os.environ.get("COGORA_ANTHROPIC_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            return
-        try:
-            import anthropic
+            raise RuntimeError(
+                "CvCPolicy requires an LLM. Set ANTHROPIC_API_KEY or COGORA_ANTHROPIC_KEY."
+            )
+        import anthropic
 
-            self._llm_client = anthropic.Anthropic(api_key=api_key)
-        except ImportError:
-            pass
+        self._llm_client = anthropic.Anthropic(api_key=api_key)
 
     @property
     def programs(self) -> dict[str, Program]:
