@@ -124,14 +124,13 @@ def test_no_target_event_when_no_target():
     assert [e for e in impl._recorder.events if e["type"] == "target"] == []
 
 
-def test_heartbeat_every_200_steps():
+def test_no_heartbeat_events_recorded():
+    """Heartbeats feed the LLM queue only, not the recorder."""
     impl, state = _make_impl()
     for _ in range(400):
         impl.step_with_state(object(), state)
     heartbeats = [e for e in impl._recorder.events if e["type"] == "heartbeat"]
-    # Fires at step 200 and 400.
-    assert len(heartbeats) == 2
-    assert {hb["step"] for hb in heartbeats} == {200, 400}
+    assert len(heartbeats) == 0
 
 
 def test_policyinfos_carries_role_and_summary():

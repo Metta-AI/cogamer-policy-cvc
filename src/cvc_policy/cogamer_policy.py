@@ -210,16 +210,10 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
                 payload={"kind": target_kind, "pos": list(target_pos)},
             )
 
-        # Heartbeat: feed the LLM a periodic snapshot and record it.
+        # Feed the LLM a periodic snapshot.
         if gs.step_index > 0 and gs.step_index % _HEARTBEAT_EVERY == 0:
-            snapshot = self._invoke_sync("summarize", gs)
-            self._recorder.emit(
-                type="heartbeat",
-                agent=self._agent_id,
-                stream="py",
-                payload=dict(snapshot),
-            )
             if state.worker is not None:
+                snapshot = self._invoke_sync("summarize", gs)
                 _log(state.log_queue, {"kind": "heartbeat", **snapshot})
 
         # Policy-info passed to mettascope. Mettascope's policy-info panel

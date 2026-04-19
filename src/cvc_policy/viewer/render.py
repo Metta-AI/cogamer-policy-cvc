@@ -114,7 +114,6 @@ TYPE_COLORS: dict[str, str] = {
     "role_change": "#f59e0b",
     "target": "#3b82f6",
     "cap_discovered": "#10b981",
-    "heartbeat": "#64748b",
     "llm_turn": "#c084fc",
     "patch_applied": "#ef4444",
     "note": "#6b7280",
