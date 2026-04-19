@@ -205,6 +205,7 @@ class TargetingMixin:
             return None
 
         current_pos = absolute_position(state)
+        current_step = state.step or self._step_index
         candidates: list[KnownEntity] = []
         for resource_name in resource_priority(state, resource_bias=self._resource_bias):
             matches = self._world_model.entities(
@@ -214,7 +215,11 @@ class TargetingMixin:
             candidates.extend(
                 sorted(
                     matches,
-                    key=lambda entity: (manhattan(current_pos, entity.position), entity.position),
+                    key=lambda entity: (
+                        manhattan(current_pos, entity.position)
+                        + max(0, current_step - entity.last_seen_step) * 0.05,
+                        entity.position,
+                    ),
                 )
             )
         if not candidates:

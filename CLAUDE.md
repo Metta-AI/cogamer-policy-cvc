@@ -30,6 +30,15 @@ scripts/submit.sh <name> <season>         # custom name and season
 - `src/cvc_policy/agent/pressure.py` — role budgets and retreat thresholds
 - `docs/architecture.md` — architecture reference with alpha.0 comparison
 
+## Game Modes
+
+CvC is a **fully cooperative** game. All policies on the map are on the same team — there are no opponents. The score reflects how well the team performs together.
+
+- **Single-team (default, e.g. `machina_1`)**: 8 agents, all same team, playing against the environment. Tournament matches pair your policy with another policy's agents on the same team.
+- **Multi-team (e.g. `four_score` variant)**: Multiple teams compete. Not the default tournament format.
+
+When evaluating policy changes, remember that tournament score depends on how well your agents cooperate with *unknown teammate policies*. Resources (extractors) are shared — teammates will drain extractors you've seen, so stale world model data matters.
+
 ## Non-Negotiables
 
 1. Let it crash — no try/except for error hiding
