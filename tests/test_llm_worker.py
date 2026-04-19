@@ -66,17 +66,18 @@ def _run_worker(client: FakeAnthropicClient, max_iters: int = 10) -> LLMWorker:
     return worker
 
 
-def test_tool_call_read_recent_logs_emits_event():
+def test_tool_call_read_recent_logs_emits_llm_turn():
     client = FakeAnthropicClient()
     client.queue_tool_use("read_recent_logs", {})
     client.queue_end_turn()
     worker = _run_worker(client)
-    tool_events = [e for e in worker._recorder.events if e["type"] == "llm_tool_call"]
-    assert len(tool_events) == 1
-    assert tool_events[0]["payload"]["tool"] == "read_recent_logs"
-    assert tool_events[0]["stream"] == "llm"
-    assert tool_events[0]["agent"] == 0
-    assert "latency_ms" in tool_events[0]["payload"]
+    turn_events = [e for e in worker._recorder.events if e["type"] == "llm_turn"]
+    assert len(turn_events) >= 1
+    first = turn_events[0]
+    assert first["stream"] == "llm"
+    assert first["agent"] == 0
+    assert "latency_ms" in first["payload"]
+    assert any(tc["tool"] == "read_recent_logs" for tc in first["payload"]["tool_calls"])
 
 
 def test_trim_history_never_starts_with_assistant():

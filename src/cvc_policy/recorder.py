@@ -35,15 +35,18 @@ def _fmt_payload_patch_applied(payload: dict[str, Any]) -> str:
 
 
 def _fmt_payload_llm_turn(payload: dict[str, Any]) -> str:
+    prompt = (payload.get("prompt") or "").strip()
     text = (payload.get("text") or "").strip()
     tools = payload.get("tool_calls") or []
     latency = payload.get("latency_ms", 0)
     parts = []
+    if prompt:
+        parts.append(f"--- prompt ---\n{prompt}")
     if text:
-        parts.append(text)
+        parts.append(f"--- response ---\n{text}")
     if tools:
         tool_strs = [f"{tc.get('tool', '?')}({json.dumps(tc.get('input', {}))})" for tc in tools]
-        parts.append("-> " + ", ".join(tool_strs))
+        parts.append("--- tool calls ---\n" + "\n".join(tool_strs))
     parts.append(f"({latency:.0f}ms)")
     return "\n".join(parts)
 

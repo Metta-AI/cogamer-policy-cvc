@@ -83,6 +83,10 @@ section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
   align-items: center; }
 .log-card .log-filters .group-label { color: var(--muted); text-transform: uppercase;
   letter-spacing: 0.05em; font-size: 11px; margin-right: 4px; }
+.filter-bulk-btn { background: none; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--muted); cursor: pointer; font-size: 10px;
+  padding: 1px 5px; margin-right: 2px; }
+.filter-bulk-btn:hover { color: var(--fg); border-color: var(--accent); }
 .log-card label.agent-cb { display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 6px; border: 1px solid var(--border); border-radius: 3px;
   background: var(--panel2); cursor: pointer; font-size: 12px; }
@@ -354,6 +358,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       </div>
       <div class="row">
         <span class="group-label">Types</span>
+        <button type="button" class="filter-bulk-btn" id="types-all">all</button>
+        <button type="button" class="filter-bulk-btn" id="types-none">none</button>
         <div class="chips" id="type-chips">
           {% for t, n, color in type_counts %}
           <span class="chip{% if t == 'inventory' %} off{% endif %}" data-type="{{ t }}">
@@ -365,6 +371,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       </div>
       <div class="row">
         <span class="group-label">Agents</span>
+        <button type="button" class="filter-bulk-btn" id="agents-all">all</button>
+        <button type="button" class="filter-bulk-btn" id="agents-none">none</button>
         {% for a in agents %}
         <label class="agent-cb">
           <input type="checkbox" checked class="agent-toggle" data-agent="{{ a }}">
@@ -851,6 +859,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     applyFilters();
   });
 
+  function _setAllTypes(hidden) {
+    typeChips.querySelectorAll('.chip').forEach(function (chip) {
+      var t = chip.dataset.type;
+      hiddenTypes[t] = hidden;
+      chip.classList.toggle('off', hidden);
+    });
+    applyFilters();
+  }
+  document.getElementById('types-all').addEventListener('click', function () { _setAllTypes(false); });
+  document.getElementById('types-none').addEventListener('click', function () { _setAllTypes(true); });
+
   document.querySelectorAll('.agent-toggle').forEach(function (cb) {
     cb.addEventListener('change', function () {
       hiddenAgents[cb.dataset.agent] = !cb.checked;
@@ -858,6 +877,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       applyFilters();
     });
   });
+
+  function _setAllAgents(hidden) {
+    document.querySelectorAll('.agent-toggle').forEach(function (cb) {
+      hiddenAgents[cb.dataset.agent] = hidden;
+      cb.checked = !hidden;
+    });
+    _syncAgentEyes();
+    applyFilters();
+  }
+  document.getElementById('agents-all').addEventListener('click', function () { _setAllAgents(false); });
+  document.getElementById('agents-none').addEventListener('click', function () { _setAllAgents(true); });
 
   function _syncAgentEyes() {
     document.querySelectorAll('.agent-eye').forEach(function (btn) {
@@ -1200,6 +1230,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   log.addEventListener('dblclick', function (ev) {
     var line = ev.target.closest('.line');
     if (!line || !log.contains(line)) return;
+    // llm_turn lines already show full text inline — skip expand.
+    if (line.dataset.type === 'llm_turn') return;
     // Don't toggle if the user is just double-clicking in the
     // already-expanded details block to select text.
     if (ev.target.closest('.line-details')) return;

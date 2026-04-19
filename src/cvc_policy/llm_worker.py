@@ -177,25 +177,11 @@ class LLMWorker:
         return {"ok": True, "applied": applied}
 
     def _dispatch_tool(self, name: str, args: dict) -> dict:
-        t0 = time.perf_counter()
         if name == "read_recent_logs":
-            out = self._tool_read_recent_logs(args)
+            return self._tool_read_recent_logs(args)
         elif name == "patch":
-            out = self._tool_patch(args)
-        else:
-            out = {"error": f"unknown tool: {name}"}
-        latency_ms = (time.perf_counter() - t0) * 1000
-        self._recorder.emit(
-            type="llm_tool_call",
-            agent=self._agent_id,
-            stream="llm",
-            payload={
-                "tool": name,
-                "input": dict(args),
-                "latency_ms": round(latency_ms, 2),
-            },
-        )
-        return out
+            return self._tool_patch(args)
+        return {"error": f"unknown tool: {name}"}
 
     # ── main loop ───────────────────────────────────────────────────────
 
@@ -231,6 +217,25 @@ class LLMWorker:
         latency_ms = (time.perf_counter() - t0) * 1000
         self._state.llm_latencies.append(latency_ms)
 
+        # Extract the last user message as the "prompt" for this turn.
+        prompt_text = ""
+        last_user = messages[-1] if messages and messages[-1].get("role") == "user" else None
+        if last_user:
+            content = last_user.get("content", "")
+            if isinstance(content, str):
+                prompt_text = content
+            elif isinstance(content, list):
+                # Tool results: extract the JSON content from each result
+                parts = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_result":
+                        parts.append(item.get("content", ""))
+                    elif isinstance(item, dict):
+                        parts.append(json.dumps(item))
+                    else:
+                        parts.append(str(item))
+                prompt_text = "\n".join(parts)
+
         # Log the assistant response for full conversation tracing.
         response_text = ""
         response_tools = []
@@ -244,6 +249,7 @@ class LLMWorker:
             agent=self._agent_id,
             stream="llm",
             payload={
+                "prompt": prompt_text,
                 "text": response_text,
                 "tool_calls": response_tools,
                 "stop_reason": response.stop_reason,
