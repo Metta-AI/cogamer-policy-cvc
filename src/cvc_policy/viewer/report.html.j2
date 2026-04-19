@@ -315,7 +315,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   <div class="right-col">
   <section class="step-view-card" id="step-view-card">
-    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="true" title="collapse/expand step view">&minus;</button> step 0</div>
+    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="true" title="collapse/expand step view">&minus;</button> <span class="step-text">step 0</span></div>
     <div id="inventory-panel" class="inventory-panel">
       {% for tg in team_groups %}
       <div class="team-block" data-team="{{ tg.team }}">
@@ -618,7 +618,11 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     scrub.value = step;
     stepLabel.textContent = 'step ' + step + ' / ' + maxStep;
     var stepViewCurrent = document.getElementById('step-view-current');
-    if (stepViewCurrent) stepViewCurrent.textContent = 'step ' + step;
+    if (stepViewCurrent) {
+      var stepText = stepViewCurrent.querySelector('.step-text');
+      if (stepText) stepText.textContent = 'step ' + step;
+      else stepViewCurrent.textContent = 'step ' + step;
+    }
     // Forward to the embedded mettascope unless we were *called* because
     // mettascope told us to move (suppressMettascopePush guards that).
     // Optional `agent` selects + centers on that agent in mettascope.
