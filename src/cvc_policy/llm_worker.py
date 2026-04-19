@@ -233,12 +233,14 @@ class LLMWorker:
 
         messages.append({"role": "assistant", "content": response.content})
 
+        # Always handle tool_use blocks in the response, regardless of
+        # stop_reason. A max_tokens cutoff can produce tool_use blocks
+        # with stop_reason="max_tokens" — we must still provide results.
+        tool_use_blocks = [b for b in response.content if getattr(b, "type", None) == "tool_use"]
         stop = False
-        if response.stop_reason == "tool_use":
+        if tool_use_blocks:
             tool_results: list[dict] = []
-            for block in response.content:
-                if getattr(block, "type", None) != "tool_use":
-                    continue
+            for block in tool_use_blocks:
                 out = self._dispatch_tool(block.name, dict(block.input or {}))
                 if out.get("shutdown"):
                     stop = True
