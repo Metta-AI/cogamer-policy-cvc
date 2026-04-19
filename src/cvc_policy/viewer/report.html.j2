@@ -147,6 +147,7 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
 #log .line .meta { color: var(--muted); }
 /* Stream indicated by whole-line color: py = white, llm = green. */
 #log .line[data-stream="py"] { color: #f1f5f9; }
+#log .line[data-type="llm_turn"] { white-space: pre-wrap; }
 #log .line[data-stream="llm"] { color: #10b981; }
 #log .agent-tag { display: inline-block; font-family: ui-monospace, Menlo, monospace;
   font-size: 10px; font-weight: 600; margin-right: 4px; vertical-align: middle; }
