@@ -1215,17 +1215,33 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     toolbar.title = 'toggle pretty-print';
     var body = document.createElement('span');
     body.className = 'line-details-body';
+    var isLlmTurn = evt.type === 'llm_turn';
     function _render(pretty) {
-      try {
-        body.textContent = pretty
-          ? JSON.stringify(payload, null, 2)
-          : JSON.stringify(payload);
-      } catch (err) {
-        body.textContent = String(payload);
+      if (isLlmTurn && pretty) {
+        // Render LLM turn as readable prose + tool calls
+        var parts = [];
+        if (payload.text) parts.push(payload.text);
+        if (payload.tool_calls && payload.tool_calls.length) {
+          parts.push('\n--- tool calls ---');
+          payload.tool_calls.forEach(function (tc) {
+            parts.push(tc.tool + '(' + JSON.stringify(tc.input) + ')');
+          });
+        }
+        parts.push('\n[stop_reason=' + (payload.stop_reason || '?')
+          + '  latency=' + (payload.latency_ms || 0) + 'ms]');
+        body.textContent = parts.join('\n');
+      } else {
+        try {
+          body.textContent = pretty
+            ? JSON.stringify(payload, null, 2)
+            : JSON.stringify(payload);
+        } catch (err) {
+          body.textContent = String(payload);
+        }
       }
       details.classList.toggle('pretty', !!pretty);
     }
-    _render(false);
+    _render(isLlmTurn);
     toolbar.addEventListener('click', function (e) {
       e.stopPropagation();
       _render(!details.classList.contains('pretty'));

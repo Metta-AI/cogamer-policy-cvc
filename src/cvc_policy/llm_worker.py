@@ -231,6 +231,26 @@ class LLMWorker:
         latency_ms = (time.perf_counter() - t0) * 1000
         self._state.llm_latencies.append(latency_ms)
 
+        # Log the assistant response for full conversation tracing.
+        response_text = ""
+        response_tools = []
+        for block in response.content:
+            if getattr(block, "type", None) == "text":
+                response_text += block.text
+            elif getattr(block, "type", None) == "tool_use":
+                response_tools.append({"tool": block.name, "input": dict(block.input or {})})
+        self._recorder.emit(
+            type="llm_turn",
+            agent=self._agent_id,
+            stream="llm",
+            payload={
+                "text": response_text,
+                "tool_calls": response_tools,
+                "stop_reason": response.stop_reason,
+                "latency_ms": round(latency_ms, 1),
+            },
+        )
+
         messages.append({"role": "assistant", "content": response.content})
 
         # Always handle tool_use blocks in the response, regardless of

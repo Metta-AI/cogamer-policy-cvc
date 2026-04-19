@@ -34,8 +34,27 @@ def _fmt_payload_patch_applied(payload: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+def _fmt_payload_llm_turn(payload: dict[str, Any]) -> str:
+    text = (payload.get("text") or "").strip()
+    # Show first line of reasoning + tool calls summary
+    first_line = text.split("\n")[0] if text else ""
+    if len(first_line) > 120:
+        first_line = first_line[:117] + "..."
+    tools = payload.get("tool_calls") or []
+    tool_names = ", ".join(tc.get("tool", "?") for tc in tools)
+    latency = payload.get("latency_ms", 0)
+    parts = []
+    if first_line:
+        parts.append(first_line)
+    if tool_names:
+        parts.append(f"-> {tool_names}")
+    parts.append(f"({latency:.0f}ms)")
+    return " ".join(parts)
+
+
 _PAYLOAD_RENDERERS: dict[str, Any] = {
     "patch_applied": _fmt_payload_patch_applied,
+    "llm_turn": _fmt_payload_llm_turn,
 }
 
 
