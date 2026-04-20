@@ -765,26 +765,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       var visible = lines.filter(function (l) { return !l.classList.contains('hidden'); });
       if (visible.length === 0) marker.classList.add('hidden');
     });
-    // Hide all step-range gaps, then show only those between two visible lines.
+    // Hide all step-range gaps — they're noise when filtering.
     log.querySelectorAll('.step-range').forEach(function (r) { r.classList.add('hidden'); });
-    // Walk all elements once: track last visible line, and when we hit a
-    // hidden range followed later by a visible line, un-hide ranges between.
-    var pendingRanges = [];
-    var sawVisibleBefore = false;
-    var children = log.children;
-    for (var ci = 0; ci < children.length; ci++) {
-      var el = children[ci];
-      if (el.classList.contains('step-range')) {
-        pendingRanges.push(el);
-      } else if (el.classList.contains('line') && !el.classList.contains('hidden')) {
-        if (sawVisibleBefore && pendingRanges.length > 0) {
-          // Show exactly one range between two visible sections.
-          pendingRanges[0].classList.remove('hidden');
-        }
-        pendingRanges = [];
-        sawVisibleBefore = true;
-      }
-    }
     recomputeMerges();
   }
 
