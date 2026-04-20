@@ -178,15 +178,15 @@ def test_report_tick_has_data_attrs(tmp_path: Path) -> None:
     from cvc_policy.viewer import render
 
     events = [
-        {"step": 7, "agent": 0, "stream": "py", "type": "target",
-         "payload": {"kind": "carbon_extractor", "pos": [1, 1]}},
+        {"step": 7, "agent": 0, "stream": "py", "type": "action",
+         "payload": {"role": "miner", "summary": "mine_carbon"}},
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
     html = render(run_dir).read_text()
     # Tick should carry data-step / data-agent / data-type attributes.
     assert 'data-step="7"' in html
     assert 'data-agent="0"' in html
-    assert 'data-type="target"' in html
+    assert 'data-type="action"' in html
 
 
 def test_report_replay_card_present_when_replay_file_exists(
@@ -1228,8 +1228,8 @@ def test_non_action_event_inherits_prior_role(tmp_path: Path) -> None:
         {"step": 0, "agent": 0, "stream": "py", "type": "action",
          "payload": {"role": "aligner", "summary": "noop"}},
         # Different event type for SAME agent — should inherit aligner.
-        {"step": 1, "agent": 0, "stream": "py", "type": "target",
-         "payload": {"kind": "junction", "pos": [1, 1]}},
+        {"step": 1, "agent": 0, "stream": "py", "type": "role_change",
+         "payload": {"from": "aligner", "to": "aligner"}},
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events)
     html = render(run_dir).read_text()
