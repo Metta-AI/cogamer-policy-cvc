@@ -71,6 +71,8 @@ section { background: var(--panel); border: 1px solid var(--border);
   display: flex; flex-direction: column; min-height: 0; }
 section h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.05em; }
+#agent-select { background: var(--panel2); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 4px; font-size: 12px; padding: 2px 4px; cursor: pointer; }
 .log-card .filters-toggle { align-self: flex-start; font-size: 0.75em;
   padding: 1px 8px; border: 1px solid var(--border); border-radius: 3px;
   background: var(--panel2); color: var(--fg); cursor: pointer;
@@ -319,8 +321,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   <div id="col-resize" role="separator" aria-orientation="vertical" tabindex="0"></div>
 
   <div class="right-col">
-  <section class="step-view-card" id="step-view-card">
-    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="true" title="collapse/expand step view">&minus;</button> <span class="step-text">step 0</span></div>
+  <section class="step-view-card collapsed" id="step-view-card">
+    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="false" title="collapse/expand step view">+</button> <span class="step-text">step 0</span></div>
     <div id="inventory-panel" class="inventory-panel">
       {% for tg in team_groups %}
       <div class="team-block" data-team="{{ tg.team }}">
@@ -350,6 +352,12 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   </section>
 
   <section class="log-card">
+    <select id="agent-select" title="Filter to a single agent">
+      <option value="">all agents</option>
+      {% for a in agents %}
+      <option value="{{ a }}" style="color: {{ agent_color(a) }}">a{{ a }}</option>
+      {% endfor %}
+    </select>
     <button type="button" id="filters-toggle" class="filters-toggle collapsed"
       aria-expanded="false" title="Show/hide filters">filters</button>
     <div class="log-filters collapsed" id="log-filters">
@@ -932,6 +940,22 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   }
   document.getElementById('agents-all').addEventListener('click', function () { _setAllAgents(false); });
   document.getElementById('agents-none').addEventListener('click', function () { _setAllAgents(true); });
+
+  // Agent dropdown: solo-filter to one agent, or show all.
+  var agentSelect = document.getElementById('agent-select');
+  agentSelect.addEventListener('change', function () {
+    var val = agentSelect.value;
+    if (val === '') {
+      _setAllAgents(false);
+    } else {
+      document.querySelectorAll('.agent-toggle').forEach(function (cb) {
+        hiddenAgents[cb.dataset.agent] = (cb.dataset.agent !== val);
+        cb.checked = (cb.dataset.agent === val);
+      });
+      _syncAgentEyes();
+      applyFilters();
+    }
+  });
 
   function _syncAgentEyes() {
     document.querySelectorAll('.agent-eye').forEach(function (btn) {
