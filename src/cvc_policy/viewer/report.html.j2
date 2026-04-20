@@ -430,7 +430,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
            data-agent="{{ ln.agent if ln.agent is not none else '' }}"
            data-stream="{{ ln.stream }}"
            data-type="{{ ln.type }}"
-           data-payload="{{ ln.text }}">{% if ln.agent is not none and not ln.hide_agent %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}{% if ln.role and role_glyph(ln.role) and not ln.hide_agent %}<span class="role-icon" title="{{ ln.role }}">{{ role_glyph(ln.role) }}</span>{% endif %}<span class="type">{{ ln.type }}</span><span class="payload">{{ ln.text }}</span></div>
+           data-payload="{{ ln.text }}">{% if ln.agent is not none and not ln.hide_agent %}<span class="agent-tag" style="color: {{ agent_color(ln.agent) }}">a{{ ln.agent }}</span>{% endif %}{% if ln.role and role_glyph(ln.role) and not ln.hide_agent %}<span class="role-icon" title="{{ ln.role }}">{{ role_glyph(ln.role) }}</span>{% endif %}{% if ln.type not in ('action', 'target') %}<span class="type">{{ ln.type }}</span>{% endif %}<span class="payload">{{ ln.text }}</span></div>
       {% endfor %}
       {% else %}
       <div class="step-marker" data-step="{{ g.step }}" data-original="step {{ g.step }}">step {{ g.step }}</div>
