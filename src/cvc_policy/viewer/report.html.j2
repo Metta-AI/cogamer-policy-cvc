@@ -762,6 +762,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       var visible = lines.filter(function (l) { return !l.classList.contains('hidden'); });
       if (visible.length === 0) marker.classList.add('hidden');
     });
+    // Hide step-range gaps that have no visible neighbors (steps on
+    // both sides are hidden, so the range is just noise).
+    log.querySelectorAll('.step-range').forEach(function (range) {
+      var prev = range.previousElementSibling;
+      while (prev && prev.classList.contains('hidden')) prev = prev.previousElementSibling;
+      var next = range.nextElementSibling;
+      while (next && next.classList.contains('hidden')) next = next.nextElementSibling;
+      var prevVisible = prev && (prev.classList.contains('line') || prev.classList.contains('step-marker'));
+      var nextVisible = next && (next.classList.contains('line') || next.classList.contains('step-marker'));
+      range.classList.toggle('hidden', !prevVisible || !nextVisible);
+    });
     recomputeMerges();
   }
 
