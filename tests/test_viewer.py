@@ -734,7 +734,7 @@ def test_cgp_view_with_server_starts_http_server(
     assert result.exit_code == 0, result.output
     assert len(opened) == 1
     url = opened[0]
-    m = _re.match(r"^http://localhost:(\d+)/report\.html$", url)
+    m = _re.match(r"^http://localhost:(\d+)$", url)
     assert m is not None, f"unexpected url: {url}"
 
 

@@ -381,15 +381,26 @@ def _view_run_dir(
         _run_serve_foreground(run_dir, int(child_port_env))
         return
 
-    # Parent mode: reap any prior backgrounded server, pick a port,
-    # spawn a detached child that serves, then return.
+    # Use a stable port so the browser URL survives across runs.
+    # CMUX_PORT provides a per-workspace reserved range; fall back to
+    # a random free port outside cmux.
+    cmux_port = os.environ.get("CMUX_PORT")
+    if cmux_port:
+        port = int(cmux_port)
+    else:
+        sock = socket.socket()
+        sock.bind(("localhost", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+
+    # Parent mode: reap any prior server on THIS port, then spawn a new one.
+    # Pid file is keyed by port so servers on different ports coexist.
     log_dir = Path(".logs")
     log_dir.mkdir(parents=True, exist_ok=True)
-    pid_file = log_dir / "cgp-view.pid"
+    pid_file = log_dir / f"cgp-view-{port}.pid"
     access_log = log_dir / "cgp-view.log"
     error_log = log_dir / "cgp-view.err"
 
-    # Kill any previous server so each `cgp view` owns a fresh process.
     if pid_file.exists():
         try:
             old_pid = int(pid_file.read_text().strip())
@@ -406,18 +417,6 @@ def _view_run_dir(
             pid_file.unlink()
         except FileNotFoundError:
             pass
-
-    # Use a stable port so the browser URL survives across runs.
-    # CMUX_PORT provides a per-workspace reserved range; fall back to
-    # a random free port outside cmux.
-    cmux_port = os.environ.get("CMUX_PORT")
-    if cmux_port:
-        port = int(cmux_port)
-    else:
-        sock = socket.socket()
-        sock.bind(("localhost", 0))
-        port = sock.getsockname()[1]
-        sock.close()
 
     if _mettascope_dist() is None:
         typer.echo(
@@ -441,7 +440,7 @@ def _view_run_dir(
         start_new_session=True,
     )
     pid_file.write_text(str(child.pid))
-    url = f"http://localhost:{port}/report.html"
+    url = f"http://localhost:{port}"
     typer.echo(f"serving {run_dir} at {url}")
     typer.echo(
         f"  pid={child.pid}  access={access_log}  errors={error_log}"
