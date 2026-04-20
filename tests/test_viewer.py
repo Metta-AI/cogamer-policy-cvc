@@ -500,8 +500,8 @@ def test_group_by_step_trailing_empty_range() -> None:
     assert groups[-1] == {"type": "range", "start": 1, "end": 10}
 
 
-def test_render_sparse_events_emit_step_range(tmp_path: Path) -> None:
-    """HTML has step-range divs for empty gaps ≥ 2 steps."""
+def test_render_sparse_events_no_step_range(tmp_path: Path) -> None:
+    """Step-range gaps are no longer emitted."""
     from cvc_policy.viewer import render
 
     events = [
@@ -510,11 +510,7 @@ def test_render_sparse_events_emit_step_range(tmp_path: Path) -> None:
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=100)
     html = render(run_dir).read_text()
-    # At least one range marker for the 1..99 gap.
-    assert re.search(
-        r'<div class="step-range" data-start="1" data-end="99">[^<]*\[1-99\][^<]*</div>',
-        html,
-    ), f"missing step-range marker; got: {html[html.find('step-range')-200 if 'step-range' in html else 0:]}"
+    assert 'class="step-range"' not in html
 
 
 def test_render_dense_events_no_step_range(tmp_path: Path) -> None:
@@ -538,7 +534,8 @@ def test_render_dense_events_no_step_range(tmp_path: Path) -> None:
     assert len(labels) == 5
 
 
-def test_render_step_range_carries_data_attrs(tmp_path: Path) -> None:
+def test_render_no_step_range_attrs(tmp_path: Path) -> None:
+    """Step-range gaps are no longer emitted."""
     from cvc_policy.viewer import render
 
     events = [
@@ -547,9 +544,7 @@ def test_render_step_range_carries_data_attrs(tmp_path: Path) -> None:
     ]
     run_dir = _write_fake_run(tmp_path / "r", cogs=1, events=events, steps=20)
     html = render(run_dir).read_text()
-    # Gap 0..4 and 6..19.
-    assert 'data-start="0"' in html and 'data-end="4"' in html
-    assert 'data-start="6"' in html and 'data-end="19"' in html
+    assert 'class="step-range"' not in html
 
 
 def test_log_has_step_separators_between_distinct_steps(tmp_path: Path) -> None:

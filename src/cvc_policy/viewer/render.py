@@ -321,7 +321,6 @@ def render_html(run_dir: Path) -> str:
     log_groups: list[dict[str, Any]] = []
     for g in raw_groups:
         if g["type"] == "range":
-            log_groups.append(g)
             continue
         lines: list[dict[str, Any]] = []
         for e in g["events"]:
