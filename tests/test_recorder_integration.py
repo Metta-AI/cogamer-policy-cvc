@@ -58,15 +58,16 @@ def _make_impl(
     return impl, state
 
 
-def test_step_emits_action_event_per_tick():
+def test_step_emits_action_event_on_change():
     impl, state = _make_impl()
     for _ in range(3):
         impl.step_with_state(object(), state)
     action_events = [e for e in impl._recorder.events if e["type"] == "action"]
-    assert len(action_events) == 3
-    assert all(e["payload"].get("role") == "miner" for e in action_events)
-    assert all(e["agent"] == 0 for e in action_events)
-    assert all(e["stream"] == "py" for e in action_events)
+    # Same action repeated — only emitted once (on first tick).
+    assert len(action_events) == 1
+    assert action_events[0]["payload"]["role"] == "miner"
+    assert action_events[0]["agent"] == 0
+    assert action_events[0]["stream"] == "py"
 
 
 def test_role_change_event_fires_on_transition():
@@ -87,12 +88,12 @@ def test_no_role_change_event_when_role_stable():
     assert [e for e in impl._recorder.events if e["type"] == "role_change"] == []
 
 
-def test_recorder_step_is_set_each_tick():
+def test_recorder_step_advances():
     impl, state = _make_impl()
     impl.step_with_state(object(), state)
     impl.step_with_state(object(), state)
-    steps = sorted({e["step"] for e in impl._recorder.events})
-    assert steps == [1, 2]
+    # Recorder's internal step counter advances each tick.
+    assert impl._recorder._step == 2
 
 
 def _make_impl_with_target(kind: str, pos: tuple[int, int]):

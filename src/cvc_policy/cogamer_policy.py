@@ -72,6 +72,8 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         self._game_id = game_id
         self._recorder = recorder if recorder is not None else EventRecorder()
         self._infos: dict[str, Any] = {}
+        self._last_summary: str | None = None
+        self._last_target: tuple[str, tuple[int, int]] | None = None
 
     def initial_agent_state(self) -> CvCAgentState:
         # Wire cap-discovery events into the recorder via constructor (no
@@ -144,16 +146,21 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
 
         action, summary = self._invoke_sync("step", gs)
         gs.finalize_step(summary)
-        self._recorder.emit(
-            type="action",
-            agent=self._agent_id,
-            stream="py",
-            payload={"role": gs.role, "summary": summary},
-        )
+        # Only log action when the summary changes (avoids noisy repeats).
+        if summary != self._last_summary:
+            payload: dict[str, Any] = {"role": gs.role, "summary": summary}
+            if self._last_summary is not None:
+                payload["from"] = self._last_summary
+            self._recorder.emit(
+                type="action",
+                agent=self._agent_id,
+                stream="py",
+                payload=payload,
+            )
+            self._last_summary = summary
         # Per-tick inventory snapshot for the viewer's inventory panel.
         # Kept as a separate event type so volatile inventory data does
-        # not leak into `action` payloads (which would defeat the log
-        # duplicate-merge that keys on payload text).
+        # not leak into `action` payloads.
         mg_state = getattr(gs, "mg_state", None)
         if mg_state is not None:
             inventory = dict(mg_state.self_state.inventory)
@@ -165,22 +172,18 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             }
             if pos is not None:
                 inv_payload["pos"] = list(pos)
-            # Team id (for grouping in the viewer). Empty string means unknown.
             self_state = getattr(mg_state, "self_state", None)
             attrs = getattr(self_state, "attributes", None) if self_state else None
             if attrs is not None:
                 team = attrs.get("team", "")
                 if team:
                     inv_payload["team"] = str(team)
-            # Shared team inventory snapshot.
             team_summary = getattr(mg_state, "team_summary", None)
             shared = getattr(team_summary, "shared_inventory", None) if team_summary else None
             if shared is not None:
                 inv_payload["team_resources"] = {
                     k: int(v) for k, v in dict(shared).items()
                 }
-            # Junction counts, mirroring _summarize() but inline to avoid
-            # an extra sync program invocation every tick.
             known_j = getattr(gs, "known_junctions", None)
             team_attr = inv_payload.get("team", "")
             if callable(known_j) and team_attr:
@@ -200,15 +203,23 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
                 stream="py",
                 payload=inv_payload,
             )
+        # Only log target when it changes.
         target_kind = getattr(gs.engine, "_current_target_kind", None)
         target_pos = getattr(gs.engine, "_current_target_position", None)
-        if target_kind and target_pos is not None:
-            self._recorder.emit(
-                type="target",
-                agent=self._agent_id,
-                stream="py",
-                payload={"kind": target_kind, "pos": list(target_pos)},
-            )
+        cur_target = (target_kind, tuple(target_pos)) if target_kind and target_pos is not None else None
+        if cur_target != self._last_target:
+            if cur_target is not None:
+                payload_t: dict[str, Any] = {"kind": cur_target[0], "pos": list(cur_target[1])}
+                if self._last_target is not None:
+                    payload_t["from_kind"] = self._last_target[0]
+                    payload_t["from_pos"] = list(self._last_target[1])
+                self._recorder.emit(
+                    type="target",
+                    agent=self._agent_id,
+                    stream="py",
+                    payload=payload_t,
+                )
+            self._last_target = cur_target
 
         # Feed the LLM a periodic snapshot.
         if gs.step_index > 0 and gs.step_index % _HEARTBEAT_EVERY == 0:
