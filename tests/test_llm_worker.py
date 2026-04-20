@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from cvc_policy.cogamer_policy import CvCAgentState
-from cvc_policy.llm_worker import LLMWorker
+from cvc_policy.llm_worker import LLMWorker, _build_status
 from cvc_policy.recorder import EventRecorder
 
 
@@ -41,34 +41,32 @@ class FakeAnthropicClient:
     def _create(self, **kwargs: Any) -> _Response:
         self._calls.append(kwargs)
         if not self._scripted:
-            # Sentinel end_turn to stop the loop.
             return _Response(
                 content=[_TextBlock(text="stop")], stop_reason="end_turn"
             )
         return self._scripted.pop(0)
 
 
-def _run_worker(client: FakeAnthropicClient, max_iters: int = 10) -> LLMWorker:
-    recorder = EventRecorder()
+def _run_worker(client: FakeAnthropicClient, max_iters: int = 10, recorder: EventRecorder | None = None) -> LLMWorker:
+    if recorder is None:
+        recorder = EventRecorder()
     state = CvCAgentState()
     worker = LLMWorker(client, agent_id=0, state=state, recorder=recorder)
-    # Drive the loop body directly (no thread) for determinism.
     from cvc_policy import llm_worker as lw
-
-    orig = lw._READ_TIMEOUT_S
-    lw._READ_TIMEOUT_S = 0.01
+    orig = lw._STATUS_COOLDOWN_S
+    lw._STATUS_COOLDOWN_S = 0.0
     try:
         for _ in range(max_iters):
             if worker._step_once():
                 break
     finally:
-        lw._READ_TIMEOUT_S = orig
+        lw._STATUS_COOLDOWN_S = orig
     return worker
 
 
-def test_tool_call_read_recent_logs_emits_llm_turn():
+def test_get_status_emits_llm_turn():
     client = FakeAnthropicClient()
-    client.queue_tool_use("read_recent_logs", {})
+    client.queue_tool_use("get_status", {})
     client.queue_end_turn()
     worker = _run_worker(client)
     turn_events = [e for e in worker._recorder.events if e["type"] == "llm_turn"]
@@ -77,7 +75,29 @@ def test_tool_call_read_recent_logs_emits_llm_turn():
     assert first["stream"] == "llm"
     assert first["agent"] == 0
     assert "latency_ms" in first["payload"]
-    assert any(tc["tool"] == "read_recent_logs" for tc in first["payload"]["tool_calls"])
+    assert any(tc["tool"] == "get_status" for tc in first["payload"]["tool_calls"])
+
+
+def test_get_status_returns_dashboard():
+    recorder = EventRecorder()
+    # Seed some inventory events.
+    recorder.emit(type="inventory", agent=0, stream="py", payload={
+        "inventory": {"hp": 80, "heart": 2, "miner": 1},
+        "role": "miner", "pos": [10, 20],
+        "team_resources": {"carbon": 100, "oxygen": 50},
+        "junctions": {"friendly": 3, "enemy": 1, "neutral": 40},
+    })
+    recorder.emit(type="action", agent=0, stream="py", payload={
+        "summary": "mine_carbon", "role": "miner",
+    })
+    status = _build_status(recorder, agent_id=0)
+    assert status["hp"] == 80
+    assert status["role"] == "miner"
+    assert status["position"] == [10, 20]
+    assert status["gear"] == {"heart": 2, "miner": 1}
+    assert status["team_resources"]["carbon"] == 100
+    assert status["junctions"]["friendly"] == 3
+    assert len(status["recent_actions"]) == 1
 
 
 def test_trim_history_never_starts_with_assistant():
@@ -85,9 +105,6 @@ def test_trim_history_never_starts_with_assistant():
     state = CvCAgentState()
     worker = LLMWorker(client, agent_id=0, state=state)
     initial = [{"role": "user", "content": "grounding"}]
-    # Build 200 alternating messages: user/assistant/user/assistant/...
-    # assistant messages carry tool_use-like blocks so we can exercise the
-    # split-pair concern.
     msgs = list(initial)
     for i in range(200):
         if i % 2 == 0:
@@ -111,58 +128,10 @@ def test_trim_history_never_starts_with_assistant():
                 }
             )
     trimmed = worker._trim_history(msgs)
-    # Grounding (msgs[0]) is preserved; msgs[1] — the first message AFTER the
-    # grounding in the kept tail — must be a user turn, never an assistant turn.
     assert trimmed[0] is msgs[0]
     assert trimmed[0]["role"] == "user"
     if len(trimmed) > 1:
         assert trimmed[1]["role"] == "user"
-
-
-def test_read_recent_logs_returns_queued_events():
-    """Exercise the queue-draining path with a real log_queue."""
-    client = FakeAnthropicClient()
-    state = CvCAgentState()
-    state.log_queue.put({"type": "action", "step": 1})
-    state.log_queue.put({"type": "action", "step": 2})
-    worker = LLMWorker(client, agent_id=0, state=state)
-    out = worker._tool_read_recent_logs({"max_events": 10})
-    assert len(out["events"]) == 2
-    assert out["events"][0]["step"] == 1
-
-
-def test_read_recent_logs_empty_queue():
-    client = FakeAnthropicClient()
-    state = CvCAgentState()
-    worker = LLMWorker(client, agent_id=0, state=state)
-    from cvc_policy import llm_worker as lw
-    orig = lw._READ_TIMEOUT_S
-    lw._READ_TIMEOUT_S = 0.01
-    try:
-        out = worker._tool_read_recent_logs({})
-    finally:
-        lw._READ_TIMEOUT_S = orig
-    assert out == {"events": []}
-
-
-def test_read_recent_logs_shutdown_first():
-    client = FakeAnthropicClient()
-    state = CvCAgentState()
-    state.log_queue.put({"__shutdown__": True})
-    worker = LLMWorker(client, agent_id=0, state=state)
-    out = worker._tool_read_recent_logs({})
-    assert out == {"shutdown": True, "events": []}
-
-
-def test_read_recent_logs_shutdown_mid_batch():
-    client = FakeAnthropicClient()
-    state = CvCAgentState()
-    state.log_queue.put({"type": "action"})
-    state.log_queue.put({"__shutdown__": True})
-    worker = LLMWorker(client, agent_id=0, state=state)
-    out = worker._tool_read_recent_logs({"max_events": 10})
-    assert out["shutdown"] is True
-    assert len(out["events"]) == 1
 
 
 def test_patch_tool_role_and_objective():
@@ -187,19 +156,7 @@ def test_dispatch_unknown_tool():
     assert "error" in out
 
 
-def test_step_once_handles_shutdown_via_tool():
-    client = FakeAnthropicClient()
-    # Tool_use triggers read_recent_logs; queue has shutdown sentinel already.
-    client.queue_tool_use("read_recent_logs", {})
-    state = CvCAgentState()
-    state.log_queue.put({"__shutdown__": True})
-    worker = LLMWorker(client, agent_id=0, state=state)
-    # single step, shutdown=True comes back in tool result; loop continues in
-    # production, but _step_once should still record that shutdown was seen
-    worker._step_once()
-
-
-def test_stop_joins_thread_with_shutdown_signal():
+def test_stop_joins_thread():
     client = FakeAnthropicClient()
     client.queue_end_turn()
     state = CvCAgentState()
@@ -225,8 +182,9 @@ def test_patch_tool_emits_patch_applied_event():
         {"resource_bias": "carbon", "rationale": "low carbon supply"},
     )
     client.queue_end_turn()
-    worker = _run_worker(client)
-    patch_events = [e for e in worker._recorder.events if e["type"] == "patch_applied"]
+    recorder = EventRecorder()
+    worker = _run_worker(client, recorder=recorder)
+    patch_events = [e for e in recorder.events if e["type"] == "patch_applied"]
     assert len(patch_events) == 1
     assert patch_events[0]["payload"]["applied"] == {"resource_bias": "carbon"}
     assert patch_events[0]["payload"]["rationale"] == "low carbon supply"

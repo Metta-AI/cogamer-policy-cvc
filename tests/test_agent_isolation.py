@@ -49,5 +49,3 @@ def test_agents_share_no_mutable_state():
     # Mutable collections on CvCAgentState must be distinct
     assert id(state_0.llm_latencies) != id(state_1.llm_latencies), "agents share llm_latencies"
     assert id(state_0.llm_log) != id(state_1.llm_log), "agents share llm_log"
-    assert id(state_0.snapshot_log) != id(state_1.snapshot_log), "agents share snapshot_log"
-    assert id(state_0.experience) != id(state_1.experience), "agents share experience"

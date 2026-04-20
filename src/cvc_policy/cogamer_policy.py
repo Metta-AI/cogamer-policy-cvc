@@ -10,14 +10,13 @@ Architecture:
               └─ GameState (observation processing + mutable state)
               └─ Program table (step/heal/retreat/mine/align/scramble/explore)
               └─ LLMWorker thread (per-agent, episode-long Anthropic session,
-                 reads logs from the agent's queue and patches strategic knobs)
+                 reads game status from recorder events, patches strategic knobs)
 """
 
 from __future__ import annotations
 
 import json
 import os
-import queue
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,8 +31,6 @@ from mettagrid.policy.policy_env_interface import PolicyEnvInterface
 from mettagrid.simulator import Action
 from mettagrid.simulator.interface import AgentObservation
 
-_HEARTBEAT_EVERY = 200
-_QUEUE_MAX = 1000
 _TRACE_DIR = os.environ.get("CVC_TRACE_DIR", "/tmp/cvc-trace")
 
 
@@ -47,9 +44,6 @@ class CvCAgentState:
     llm_role_override: str | None = None
     llm_objective: str | None = None
     llm_log: list[dict[str, Any]] = field(default_factory=list)
-    snapshot_log: list[dict[str, Any]] = field(default_factory=list)
-    experience: list[dict[str, Any]] = field(default_factory=list)
-    log_queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=_QUEUE_MAX))
     worker: LLMWorker | None = None
 
 
@@ -104,8 +98,6 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
             on_heart_cap_discovery=_on_heart_cap_discovery,
         )
         state = CvCAgentState(game_state=gs)
-        # Wire log_to_llm onto GameState so code programs can push events.
-        gs.log_to_llm = lambda event: _log(state.log_queue, event)  # type: ignore[attr-defined]
         if self._llm_client is not None:
             state.worker = LLMWorker(
                 self._llm_client, self._agent_id, state, recorder=self._recorder
@@ -221,12 +213,6 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
                 )
             self._last_target = cur_target
 
-        # Feed the LLM a periodic snapshot.
-        if gs.step_index > 0 and gs.step_index % _HEARTBEAT_EVERY == 0:
-            if state.worker is not None:
-                snapshot = self._invoke_sync("summarize", gs)
-                _log(state.log_queue, {"kind": "heartbeat", **snapshot})
-
         # Policy-info passed to mettascope. Mettascope's policy-info panel
         # displays every non-`__` key and recognises a relative
         # `target: [row, col]` offset to highlight on the map. Keep the
@@ -241,14 +227,6 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         self._infos = infos
 
         return action, state
-
-
-def _log(q: queue.Queue, event: dict) -> None:
-    """Best-effort enqueue. Drops the event if the queue is full."""
-    try:
-        q.put_nowait(event)
-    except queue.Full:
-        pass
 
 
 def _truthy(value: Any) -> bool:
@@ -354,8 +332,8 @@ class CvCPolicy(MultiAgentPolicy):
         self._episode_start = time.time()
         # Drop cached per-agent wrappers so the next agent_policy() call
         # constructs fresh CvCPolicyImpl + initial_agent_state (new GameState,
-        # fresh LLM worker, empty queue). Reusing the old wrappers across
-        # episodes would carry stale GameState and dead LLM workers.
+        # fresh LLM worker). Reusing the old wrappers across episodes would
+        # carry stale GameState and dead LLM workers.
         self._agent_policies = {}
         # Re-arm for the next episode: clear idempotency flag and re-register
         # atexit (we unregistered it at the end of the previous episode).

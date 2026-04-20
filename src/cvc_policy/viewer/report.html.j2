@@ -445,6 +445,50 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
   var INV_CARGO_KEYS = ['carbon', 'oxygen', 'germanium', 'silicon', 'heart'];
   var INV_MAX = {hp: 100, energy: 100};
 
+  // Compute get_status dashboard for an agent at a given step — mirrors
+  // llm_worker._build_status but runs client-side on the embedded events.
+  function getStatus(agentId, atStep) {
+    if (atStep === undefined) atStep = maxStep;
+    var latestInv = {};
+    var recentActions = [];
+    var recentTargets = [];
+    for (var i = events.length - 1; i >= 0; i--) {
+      var e = events[i];
+      if (e.step > atStep) continue;
+      if (e.agent !== agentId) continue;
+      if (e.type === 'inventory' && !latestInv.inventory) {
+        latestInv = e.payload || {};
+      }
+      if (e.type === 'action' && recentActions.length < 5) {
+        var s = (e.payload || {}).summary || '';
+        var f = (e.payload || {})['from'] || '';
+        recentActions.unshift(f ? (f + ' -> ' + s) : s);
+      }
+      if (e.type === 'target' && recentTargets.length < 3) {
+        var p = e.payload || {};
+        recentTargets.unshift((p.kind || '?') + ' @ ' + JSON.stringify(p.pos || '?'));
+      }
+    }
+    var inv = latestInv.inventory || {};
+    var gear = {};
+    ['miner','aligner','scrambler','scout','heart','solar'].forEach(function (k) {
+      if (inv[k] && parseInt(inv[k]) > 0) gear[k] = parseInt(inv[k]);
+    });
+    return {
+      step: atStep,
+      hp: parseInt(inv.hp || 0),
+      position: latestInv.pos,
+      role: latestInv.role || 'unknown',
+      gear: gear,
+      team_resources: latestInv.team_resources || {},
+      junctions: latestInv.junctions || {},
+      recent_actions: recentActions,
+      recent_targets: recentTargets
+    };
+  }
+  // Expose globally so operators can call getStatus(agent, step) in console.
+  window.getStatus = getStatus;
+
   function _findLatestHeartbeat(agent, step) {
     var entries = inventoryByAgentStep[String(agent)];
     if (!entries || entries.length === 0) return null;

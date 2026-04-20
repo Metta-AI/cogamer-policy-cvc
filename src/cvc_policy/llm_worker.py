@@ -1,16 +1,15 @@
 """Per-agent LLM coach worker.
 
 Each agent owns one LLMWorker running in a dedicated thread. The worker holds a
-single episode-long Anthropic conversation. It loops forever (no sleep) calling
-`read_recent_logs` (blocks up to 1s on an empty queue) to pull events from the
-Python tick loop, and `patch` to write strategic knobs back onto the agent's
-state. The Python tick loop only reads those knobs — it never waits on the LLM.
+single episode-long Anthropic conversation. It loops calling `get_status` to
+compute a dashboard from the recorder's event stream, then `patch` to write
+strategic knobs back onto the agent's state. The Python tick loop only reads
+those knobs — it never waits on the LLM.
 """
 
 from __future__ import annotations
 
 import json
-import queue
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -23,41 +22,38 @@ if TYPE_CHECKING:
 
 _MODEL = "claude-haiku-4-5-20251001"
 _MAX_TOKENS = 400
-_READ_TIMEOUT_S = 1.0
 _HISTORY_TRIM_AT = 120
 _HISTORY_KEEP_TAIL = 40
+_STATUS_COOLDOWN_S = 1.0
 
 _SYSTEM = (
-    "You are the strategic coach for a single agent in the CvC game. "
-    "The agent picks its own low-level actions. You only steer three knobs "
-    "by calling `patch`: resource_bias (which element to prioritize mining), "
-    "role (miner/aligner/scrambler — null to leave unchanged), "
-    "and objective (expand/defend/economy_bootstrap — null to leave unchanged).\n"
+    "You are the strategic coach for a single agent in a cooperative CvC game. "
+    "All agents on the map are on the same team — there are no opponents. "
+    "Score = junctions held over time.\n"
     "\n"
-    "Work in a loop: call `read_recent_logs` to pull recent game events, "
-    "reason briefly, then call `patch` when the state should change. Repeat "
-    "continuously for the whole episode. `read_recent_logs` blocks up to 1s "
-    "when the queue is empty — just call it again if it returns no events."
+    "You steer three knobs by calling `patch`:\n"
+    "- resource_bias: which element to prioritize mining\n"
+    "- role: miner/aligner/scrambler (null = keep current)\n"
+    "- objective: expand/defend/economy_bootstrap (null = keep current)\n"
+    "\n"
+    "Work in a loop: call `get_status` to see the current game state, "
+    "reason briefly, then call `patch` when strategy should change. "
+    "Call `get_status` again to see updated state. Repeat for the episode.\n"
+    "\n"
+    "Be concise. Only patch when the situation warrants a change."
 )
 
 _TOOLS = [
     {
-        "name": "read_recent_logs",
+        "name": "get_status",
         "description": (
-            "Drain recent log events from the agent's event queue. Blocks up to "
-            "1 second waiting for the first event; returns immediately once any "
-            "events are available, up to max_events total."
+            "Get a dashboard of the agent's current game state: step, HP, "
+            "position, role, gear, team resources, junction counts, team "
+            "composition, and recent actions."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {
-                "max_events": {
-                    "type": "integer",
-                    "default": 20,
-                    "minimum": 1,
-                    "maximum": 100,
-                },
-            },
+            "properties": {},
         },
     },
     {
@@ -92,8 +88,65 @@ _TOOLS = [
 ]
 
 
+def _build_status(recorder: EventRecorder, agent_id: int) -> dict[str, Any]:
+    """Compute a dense dashboard from the recorder's event stream."""
+    events = recorder.events
+
+    # Find latest inventory event for this agent.
+    latest_inv: dict[str, Any] = {}
+    for e in reversed(events):
+        if e["type"] == "inventory" and e.get("agent") == agent_id:
+            latest_inv = e.get("payload", {})
+            break
+
+    # Recent action/target changes for this agent (last 5 of each).
+    recent_actions: list[str] = []
+    recent_targets: list[str] = []
+    for e in reversed(events):
+        if e.get("agent") != agent_id:
+            continue
+        if e["type"] == "action" and len(recent_actions) < 5:
+            summary = e.get("payload", {}).get("summary", "")
+            prev = e.get("payload", {}).get("from", "")
+            if prev:
+                recent_actions.append(f"{prev} -> {summary}")
+            else:
+                recent_actions.append(summary)
+        elif e["type"] == "target" and len(recent_targets) < 3:
+            p = e.get("payload", {})
+            recent_targets.append(f"{p.get('kind', '?')} @ {p.get('pos', '?')}")
+        if len(recent_actions) >= 5 and len(recent_targets) >= 3:
+            break
+    recent_actions.reverse()
+    recent_targets.reverse()
+
+    inv = latest_inv.get("inventory", {})
+    step = 0
+    for e in reversed(events):
+        if e.get("agent") == agent_id:
+            step = e.get("step", 0)
+            break
+
+    # Gear list from inventory keys
+    gear_types = {"miner", "aligner", "scrambler", "scout", "heart", "solar"}
+    gear = {k: int(v) for k, v in inv.items() if k in gear_types and int(v) > 0}
+
+    return {
+        "step": step,
+        "hp": int(inv.get("hp", 0)),
+        "position": latest_inv.get("pos"),
+        "role": latest_inv.get("role", "unknown"),
+        "gear": gear,
+        "team_resources": latest_inv.get("team_resources", {}),
+        "junctions": latest_inv.get("junctions", {}),
+        "resource_bias": latest_inv.get("resource_bias", ""),
+        "recent_actions": recent_actions,
+        "recent_targets": recent_targets,
+    }
+
+
 class LLMWorker:
-    """Owns one thread, one Anthropic session, one queue → one agent's knobs."""
+    """Owns one thread, one Anthropic session → one agent's knobs."""
 
     def __init__(
         self,
@@ -118,34 +171,15 @@ class LLMWorker:
 
     def stop(self, timeout: float = 5.0) -> None:
         self._shutdown.set()
-        # Wake a blocked read_recent_logs by pushing a sentinel.
-        try:
-            self._state.log_queue.put_nowait({"__shutdown__": True})
-        except queue.Full:  # pragma: no cover - defensive on bounded queue race
-            pass
         self._thread.join(timeout=timeout)
 
     # ── tool implementations ────────────────────────────────────────────
 
-    def _tool_read_recent_logs(self, args: dict) -> dict:
-        max_events = int(args.get("max_events", 20))
-        events: list[dict] = []
-        try:
-            first = self._state.log_queue.get(timeout=_READ_TIMEOUT_S)
-        except queue.Empty:
-            return {"events": []}
-        if first.get("__shutdown__"):
-            return {"shutdown": True, "events": []}
-        events.append(first)
-        while len(events) < max_events:
-            try:
-                e = self._state.log_queue.get_nowait()
-            except queue.Empty:
-                break
-            if e.get("__shutdown__"):
-                return {"shutdown": True, "events": events}
-            events.append(e)
-        return {"events": events}
+    def _tool_get_status(self, args: dict) -> dict:
+        status = _build_status(self._recorder, self._agent_id)
+        if self._shutdown.is_set():
+            status["shutdown"] = True
+        return status
 
     def _tool_patch(self, args: dict) -> dict:
         applied: dict[str, Any] = {}
@@ -177,8 +211,8 @@ class LLMWorker:
         return {"ok": True, "applied": applied}
 
     def _dispatch_tool(self, name: str, args: dict) -> dict:
-        if name == "read_recent_logs":
-            return self._tool_read_recent_logs(args)
+        if name == "get_status":
+            return self._tool_get_status(args)
         elif name == "patch":
             return self._tool_patch(args)
         return {"error": f"unknown tool: {name}"}
@@ -191,9 +225,8 @@ class LLMWorker:
                 "role": "user",
                 "content": (
                     f"You are coaching agent {self._agent_id} for this episode. "
-                    "Start by calling read_recent_logs. Continue looping "
-                    "(read_recent_logs → reason → patch when needed) until the "
-                    "episode ends."
+                    "Call get_status to see the current game state, then patch "
+                    "when strategy should change. Loop until the episode ends."
                 ),
             }
         ]
@@ -225,7 +258,6 @@ class LLMWorker:
             if isinstance(content, str):
                 prompt_text = content
             elif isinstance(content, list):
-                # Tool results: extract the JSON content from each result
                 parts = []
                 for item in content:
                     if isinstance(item, dict) and item.get("type") == "tool_result":
@@ -279,11 +311,14 @@ class LLMWorker:
                 )
             messages.append({"role": "user", "content": tool_results})
         else:
-            # No tool call. Nudge the model to resume polling.
             messages.append(
-                {"role": "user", "content": "Continue. Call read_recent_logs."}
+                {"role": "user", "content": "Continue. Call get_status."}
             )
             stop = True
+
+        # Cooldown: avoid hammering the API when get_status returns instantly.
+        if not stop:
+            time.sleep(_STATUS_COOLDOWN_S)
 
         if len(messages) > _HISTORY_TRIM_AT:
             messages[:] = self._trim_history(messages)
@@ -293,10 +328,7 @@ class LLMWorker:
     def _trim_history(messages: list[dict]) -> list[dict]:
         """Trim history while never starting the kept tail on an assistant
         turn. Assistant tool_use blocks must always be followed by a matching
-        user tool_result in the same slice — the simplest invariant that
-        guarantees this is: the first message after the preserved grounding
-        must have role=user. Walk forward from the proposed start until it
-        does."""
+        user tool_result in the same slice."""
         if len(messages) <= _HISTORY_KEEP_TAIL + 1:
             return list(messages)
         start = len(messages) - _HISTORY_KEEP_TAIL
@@ -307,7 +339,4 @@ class LLMWorker:
     def _run(self) -> None:
         self._messages = self._initial_messages()
         while not self._shutdown.is_set():
-            # _step_once returns True on end_turn or shutdown. In production
-            # we keep looping regardless of end_turn (a nudge was appended);
-            # we only exit when the shutdown event is set.
             self._step_once(self._messages)
