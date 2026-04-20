@@ -134,6 +134,8 @@ def _env() -> Environment:
 def _type_counts(events: list[dict[str, Any]]) -> list[tuple[str, int, str]]:
     counts: dict[str, int] = {}
     for e in events:
+        if e["type"] == "inventory":
+            continue
         counts[e["type"]] = counts.get(e["type"], 0) + 1
     out = sorted(counts.items(), key=lambda kv: -kv[1])
     return [(t, n, TYPE_COLORS.get(t, _DEFAULT_COLOR)) for t, n in out]
@@ -310,8 +312,12 @@ def render_html(run_dir: Path) -> str:
     # Duplicate-merging is deferred to client-side JS so it can recompose
     # correctly as filters toggle. `_merge_duplicate_steps` remains a pure
     # tested helper but is no longer called here.
+    # Exclude inventory events from the log — they power the step view
+    # panel via embedded JSON but are too noisy for the event log.
+    _LOG_EXCLUDE_TYPES = {"inventory"}
+    log_events = [e for e in events if e["type"] not in _LOG_EXCLUDE_TYPES]
     idx_of = {id(e): i for i, e in enumerate(events)}
-    raw_groups = _group_by_step(events, max_step)
+    raw_groups = _group_by_step(log_events, max_step)
     log_groups: list[dict[str, Any]] = []
     for g in raw_groups:
         if g["type"] == "range":

@@ -362,7 +362,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         <button type="button" class="filter-bulk-btn" id="types-none">none</button>
         <div class="chips" id="type-chips">
           {% for t, n, color in type_counts %}
-          <span class="chip{% if t == 'inventory' %} off{% endif %}" data-type="{{ t }}">
+          <span class="chip" data-type="{{ t }}">
             <span class="dot" style="background: {{ color }}"></span>
             {{ t }} <span class="meta">({{ n }})</span>
           </span>
