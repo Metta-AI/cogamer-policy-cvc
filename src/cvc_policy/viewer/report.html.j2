@@ -496,13 +496,18 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     ['miner','aligner','scrambler','scout','heart'].forEach(function (k) {
       if (inv[k] && parseInt(inv[k]) > 0) gear[k] = parseInt(inv[k]);
     });
+    var cargo = {};
+    ['carbon','oxygen','germanium','silicon'].forEach(function (k) {
+      if (inv[k] && parseInt(inv[k]) > 0) cargo[k] = parseInt(inv[k]);
+    });
     return {
       step: atStep,
       hp: parseInt(inv.hp || 0),
+      energy: parseInt(inv.energy || 0),
       position: latestInv.pos,
       role: latestInv.role || 'unknown',
       gear: gear,
-      inventory: {energy: parseInt(inv.energy || 0), solar: parseInt(inv.solar || 0)},
+      cargo: cargo,
       team_resources: latestInv.team_resources || {},
       junctions: latestInv.junctions || {},
       recent_actions: recentActions,

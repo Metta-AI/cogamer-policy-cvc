@@ -125,16 +125,19 @@ def _build_status(recorder: EventRecorder, agent_id: int) -> dict[str, Any]:
             step = e.get("step", 0)
             break
 
-    # Gear = role gear only (not solar/energy/resources)
     gear_types = {"miner", "aligner", "scrambler", "scout", "heart"}
     gear = {k: int(v) for k, v in inv.items() if k in gear_types and int(v) > 0}
+    cargo_types = {"carbon", "oxygen", "germanium", "silicon"}
+    cargo = {k: int(v) for k, v in inv.items() if k in cargo_types and int(v) > 0}
 
     return {
         "step": step,
         "hp": int(inv.get("hp", 0)),
+        "energy": int(inv.get("energy", 0)),
         "position": latest_inv.get("pos"),
         "role": latest_inv.get("role", "unknown"),
         "gear": gear,
+        "cargo": cargo,
         "team_resources": latest_inv.get("team_resources", {}),
         "junctions": latest_inv.get("junctions", {}),
         "resource_bias": latest_inv.get("resource_bias", ""),
