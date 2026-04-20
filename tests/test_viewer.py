@@ -699,6 +699,9 @@ def test_cgp_view_with_server_starts_http_server(
 
     from cvc_policy.cli import app
 
+    # Use a random port so tests don't collide with the user's viewer.
+    monkeypatch.delenv("CMUX_PORT", raising=False)
+
     runs_root = tmp_path / "runs"
     _write_fake_run(runs_root / "abc-20260101-000000", run_id="abc")
 
