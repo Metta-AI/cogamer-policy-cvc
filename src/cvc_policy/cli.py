@@ -343,39 +343,10 @@ def _run_serve_foreground(run_dir: Path, port: int) -> None:
 
 
 def _open_or_reload(url: str) -> None:
-    """Open a URL, reusing an existing Chrome tab with report.html if possible."""
-    import platform
-    import subprocess
+    """Open a URL in the default browser."""
     import webbrowser
 
-    if platform.system() != "Darwin":
-        webbrowser.open(url)
-        return
-    # AppleScript: find a Chrome tab whose URL contains "report.html" and
-    # navigate it to the new URL. Falls back to webbrowser.open.
-    script = f'''
-    tell application "Google Chrome"
-        set found to false
-        repeat with w in windows
-            repeat with t in tabs of w
-                if URL of t contains "report.html" then
-                    set URL of t to "{url}"
-                    set active tab index of w to index of t
-                    set found to true
-                    exit repeat
-                end if
-            end repeat
-            if found then exit repeat
-        end repeat
-        if not found then
-            open location "{url}"
-        end if
-    end tell
-    '''
-    try:
-        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=3)
-    except Exception:
-        webbrowser.open(url)
+    webbrowser.open(url)
 
 
 def _view_run_dir(
@@ -436,12 +407,17 @@ def _view_run_dir(
         except FileNotFoundError:
             pass
 
-    # Pick a free port up front so we can print the URL and open the
-    # browser before the child has finished binding.
-    sock = socket.socket()
-    sock.bind(("localhost", 0))
-    port = sock.getsockname()[1]
-    sock.close()
+    # Use a stable port so the browser URL survives across runs.
+    # CMUX_PORT provides a per-workspace reserved range; fall back to
+    # a random free port outside cmux.
+    cmux_port = os.environ.get("CMUX_PORT")
+    if cmux_port:
+        port = int(cmux_port)
+    else:
+        sock = socket.socket()
+        sock.bind(("localhost", 0))
+        port = sock.getsockname()[1]
+        sock.close()
 
     if _mettascope_dist() is None:
         typer.echo(
