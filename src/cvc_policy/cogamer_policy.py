@@ -68,6 +68,9 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         self._infos: dict[str, Any] = {}
         self._last_summary: str | None = None
         self._last_target: tuple[str, tuple[int, int]] | None = None
+        self._applied_llm_resource_bias: str | None = None
+        self._applied_llm_role: str | None = None
+        self._applied_llm_objective: str | None = None
 
     def initial_agent_state(self) -> CvCAgentState:
         # Wire cap-discovery events into the recorder via constructor (no
@@ -123,6 +126,26 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
 
         gs.process_obs(obs)
         self._recorder.set_step(gs.step_index)
+
+        # Detect when LLM knobs are picked up by the tick loop.
+        applied: dict[str, Any] = {}
+        if state.resource_bias_from_llm != self._applied_llm_resource_bias:
+            applied["resource_bias"] = state.resource_bias_from_llm
+            self._applied_llm_resource_bias = state.resource_bias_from_llm
+        if state.llm_role_override != self._applied_llm_role:
+            applied["role"] = state.llm_role_override
+            self._applied_llm_role = state.llm_role_override
+        if state.llm_objective != self._applied_llm_objective:
+            applied["objective"] = state.llm_objective
+            self._applied_llm_objective = state.llm_objective
+        if applied:
+            self._recorder.emit(
+                type="llm_applied",
+                agent=self._agent_id,
+                stream="llm",
+                payload=applied,
+            )
+
         prev_role = gs.role
         gs.role = self._invoke_sync("desired_role", gs)
         # LLM role override wins over the heuristic role choice (soft hint).

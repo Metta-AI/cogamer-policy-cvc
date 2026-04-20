@@ -116,6 +116,7 @@ TYPE_COLORS: dict[str, str] = {
     "cap_discovered": "#10b981",
     "llm_turn": "#c084fc",
     "patch_applied": "#ef4444",
+    "llm_applied": "#f59e0b",
     "note": "#6b7280",
     "error": "#b91c1c",
     "world_model_summary": "#0ea5e9",
