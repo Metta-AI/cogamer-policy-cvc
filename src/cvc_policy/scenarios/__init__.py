@@ -36,6 +36,7 @@ class Scenario:
     policy_kwargs: dict[str, Any] = field(default_factory=dict)
     mission_overrides: dict[str, Any] = field(default_factory=dict)
     variant_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    tps: float = 0.0
     setup: Callable[[Any], None] | None = None
     assertions: list[Callable[[Any], Any]] = field(default_factory=list)
 

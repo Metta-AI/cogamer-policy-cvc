@@ -567,9 +567,6 @@ def play(
         k, val = parse_override(spec)
         policy_kwargs[k] = val
 
-    if tps > 0:
-        tick_ms = int(1000 / tps)
-        mission_overrides["action_timeout_ms"] = tick_ms
     synthetic = Scenario(
         name="manual",
         tier=-1,
@@ -578,6 +575,7 @@ def play(
         cogs=cogs,
         steps=steps,
         seed=seed,
+        tps=tps,
         policy_kwargs=policy_kwargs,
         mission_overrides=mission_overrides,
         variant_overrides=v_overrides,
