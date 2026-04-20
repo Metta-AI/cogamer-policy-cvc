@@ -38,6 +38,7 @@ _SYSTEM = (
     "\n"
     "Work in a loop: call `get_status` to see the current game state, "
     "reason briefly, then call `patch` when strategy should change. "
+    "Call `get_world_model` to see all known entities (extractors, junctions, etc.).\n"
     "Call `get_status` again to see updated state. Repeat for the episode.\n"
     "\n"
     "Be concise. Only patch when the situation warrants a change."
@@ -50,6 +51,18 @@ _TOOLS = [
             "Get a dashboard of the agent's current game state: step, HP, "
             "position, role, gear, team resources, junction counts, team "
             "composition, and recent actions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "get_world_model",
+        "description": (
+            "Get the agent's world model: all known entities (extractors, "
+            "junctions, hubs, walls, stations) with their type, position, "
+            "owner/team, attributes, and last_seen_step."
         ),
         "input_schema": {
             "type": "object",
@@ -211,9 +224,34 @@ class LLMWorker:
         )
         return {"ok": True, "applied": applied}
 
+    def _tool_get_world_model(self, args: dict) -> dict:
+        gs = self._state.game_state
+        if gs is None:
+            return {"entities": []}
+        wm = gs.world_model
+        entities = []
+        for entity in wm.entities():
+            e: dict[str, Any] = {
+                "type": entity.entity_type,
+                "pos": list(entity.position),
+                "last_seen": entity.last_seen_step,
+            }
+            if entity.owner:
+                e["owner"] = entity.owner
+            if entity.team:
+                e["team"] = entity.team
+            # Include relevant attributes (resource amounts, etc.)
+            for k, v in entity.attributes.items():
+                if k not in ("global_x", "global_y"):
+                    e[k] = v
+            entities.append(e)
+        return {"entities": entities, "count": len(entities)}
+
     def _dispatch_tool(self, name: str, args: dict) -> dict:
         if name == "get_status":
             return self._tool_get_status(args)
+        elif name == "get_world_model":
+            return self._tool_get_world_model(args)
         elif name == "patch":
             return self._tool_patch(args)
         return {"error": f"unknown tool: {name}"}

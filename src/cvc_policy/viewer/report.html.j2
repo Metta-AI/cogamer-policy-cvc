@@ -335,7 +335,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   <div class="right-col">
   <section class="step-view-card collapsed" id="step-view-card">
-    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="false" title="collapse/expand step view">+</button> <span class="step-text">step 0</span> <button type="button" id="get-status-btn" class="get-status-btn" title="Show get_status() for current agent at this step">status</button>
+    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="false" title="collapse/expand step view">+</button> <span class="step-text">step 0</span> <button type="button" id="get-status-btn" class="get-status-btn" title="Show get_status() for current agent at this step">status</button> <button type="button" id="get-world-btn" class="get-status-btn" title="Show world model for current agent at this step">world</button>
     <pre id="status-output" class="status-output" style="display:none"></pre></div>
     <div id="inventory-panel" class="inventory-panel">
       {% for tg in team_groups %}
@@ -514,8 +514,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       recent_targets: recentTargets
     };
   }
-  // Expose globally so operators can call getStatus(agent, step) in console.
+  // Get world model for an agent (from the world_model event emitted at episode end).
+  function getWorldModel(agentId) {
+    for (var i = events.length - 1; i >= 0; i--) {
+      var e = events[i];
+      if (e.type === 'world_model' && e.agent === agentId) {
+        return e.payload;
+      }
+    }
+    return {entities: [], count: 0};
+  }
+  // Expose globally for console use.
   window.getStatus = getStatus;
+  window.getWorldModel = getWorldModel;
 
   function _findLatestHeartbeat(agent, step) {
     var entries = inventoryByAgentStep[String(agent)];
@@ -1167,12 +1178,27 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       if (agent !== '') label = 'a' + agent + ' @ step ' + currentStep;
       stepText.textContent = label;
     }
+    var worldBtn = document.getElementById('get-world-btn');
     if (statusBtn) statusBtn.style.display = (agent === '') ? 'none' : '';
-    // Hide status output when agent changes.
+    if (worldBtn) worldBtn.style.display = (agent === '') ? 'none' : '';
+    // Hide output when agent changes.
     var out = document.getElementById('status-output');
     if (out) out.style.display = 'none';
   }
   agentSelect.addEventListener('change', _updateStepHeader);
+
+  document.getElementById('get-world-btn').addEventListener('click', function () {
+    var out = document.getElementById('status-output');
+    if (out.style.display !== 'none') {
+      out.style.display = 'none';
+      return;
+    }
+    var agent = parseInt(agentSelect.value, 10);
+    if (isNaN(agent)) return;
+    var wm = getWorldModel(agent);
+    out.textContent = JSON.stringify(wm, null, 2);
+    out.style.display = 'block';
+  });
 
   (function setupReplay() {
     var iframe = document.getElementById('mettascope');

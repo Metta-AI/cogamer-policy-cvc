@@ -369,17 +369,32 @@ class CvCPolicy(MultiAgentPolicy):
             self._recorder.flush_json(Path(self._record_dir) / "events.json")
 
     def _emit_world_model_summaries(self) -> None:
-        """Emit one world_model_summary event per agent at episode end."""
+        """Emit full world model snapshot per agent at episode end."""
         for agent_id, wrapper in self._agent_policies.items():
             st: CvCAgentState | None = getattr(wrapper, "_state", None)
             if st is None or st.game_state is None:
                 continue
             wm = st.game_state.world_model
+            entities = []
+            for entity in wm.entities():
+                e: dict[str, Any] = {
+                    "type": entity.entity_type,
+                    "pos": list(entity.position),
+                    "last_seen": entity.last_seen_step,
+                }
+                if entity.owner:
+                    e["owner"] = entity.owner
+                if entity.team:
+                    e["team"] = entity.team
+                for k, v in entity.attributes.items():
+                    if k not in ("global_x", "global_y"):
+                        e[k] = v
+                entities.append(e)
             self._recorder.emit(
-                type="world_model_summary",
+                type="world_model",
                 agent=agent_id,
                 stream="py",
-                payload=wm.summary(),
+                payload={"entities": entities, "count": len(entities)},
             )
 
     def _write_trace(self) -> None:
