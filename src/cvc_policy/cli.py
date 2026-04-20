@@ -537,7 +537,7 @@ def play(
         [], "--policy-args", help="Policy kwarg KEY=VALUE (repeatable)."
     ),
     tps: float = typer.Option(
-        0.0, "--tps", help="Target ticks per second (0 = unlimited)."
+        5.0, "--tps", help="Target ticks per second (0 = unlimited)."
     ),
     record: bool = typer.Option(
         True, "--record/--no-record", help="Write a run folder under --runs-root."

@@ -80,7 +80,7 @@ def _validate_policy_kwargs(policy_kwargs: dict[str, Any]) -> None:
         )
 
 
-def _drive_rollout(*, env_cfg: Any, spec: PolicySpec, run_dir: Path, seed: int, tps: float = 0.0) -> int:  # pragma: no cover
+def _drive_rollout(*, env_cfg: Any, spec: PolicySpec, run_dir: Path, seed: int) -> int:  # pragma: no cover
     """Run one episode. Returns steps executed.
 
     Inlines the `run_episode_local` flow so we can call
@@ -95,22 +95,6 @@ def _drive_rollout(*, env_cfg: Any, spec: PolicySpec, run_dir: Path, seed: int, 
     env_interface = PolicyEnvInterface.from_mg_cfg(env_for_rollout)
     policy = initialize_or_load_policy(env_interface, spec)
     assignments = [0] * env_for_rollout.game.num_agents
-
-    # Throttle: wrap step_batch to sleep once per tick to hit target tps.
-    if tps > 0:
-        tick_interval = 1.0 / tps
-        _last_tick_time = [0.0]
-        _orig_step_batch = policy.step_batch
-
-        def _throttled_step_batch(*args: Any, **kwargs: Any) -> Any:
-            now = time.monotonic()
-            elapsed = now - _last_tick_time[0]
-            if _last_tick_time[0] > 0 and elapsed < tick_interval:
-                time.sleep(tick_interval - elapsed)
-            _last_tick_time[0] = time.monotonic()
-            return _orig_step_batch(*args, **kwargs)
-
-        policy.step_batch = _throttled_step_batch  # type: ignore[assignment]
 
     result, replay = single_episode_rollout(
         [policy],
@@ -200,7 +184,12 @@ def run_scenario(
     )
     started_at = datetime.now(timezone.utc).isoformat()
     t0 = time.time()
-    steps_run = _drive_rollout(env_cfg=env_cfg, spec=spec, run_dir=run_dir, seed=scenario.seed, tps=scenario.tps)
+    if scenario.tps > 0:
+        spec = PolicySpec(
+            class_path=spec.class_path,
+            init_kwargs={**spec.init_kwargs, "tps": scenario.tps},
+        )
+    steps_run = _drive_rollout(env_cfg=env_cfg, spec=spec, run_dir=run_dir, seed=scenario.seed)
     duration_s = time.time() - t0
 
     # Load Run, evaluate assertions.

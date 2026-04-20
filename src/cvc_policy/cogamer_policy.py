@@ -58,6 +58,7 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         llm_client: Any | None = None,
         game_id: str = "",
         recorder: EventRecorder | None = None,
+        tps: float = 0.0,
     ) -> None:
         self._policy_env_info = policy_env_info
         self._agent_id = agent_id
@@ -65,9 +66,11 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
         self._llm_client = llm_client
         self._game_id = game_id
         self._recorder = recorder if recorder is not None else EventRecorder()
+        self._tps = tps
         self._infos: dict[str, Any] = {}
         self._last_summary: str | None = None
         self._last_target: tuple[str, tuple[int, int]] | None = None
+        self._last_tick_time: float = 0.0
         self._applied_llm_resource_bias: str | None = None
         self._applied_llm_role: str | None = None
         self._applied_llm_objective: str | None = None
@@ -117,6 +120,15 @@ class CvCPolicyImpl(StatefulPolicyImpl[CvCAgentState]):
     def step_with_state(self, obs: AgentObservation, state: CvCAgentState) -> tuple[Action, CvCAgentState]:
         gs = state.game_state
         assert gs is not None
+
+        # Throttle: sleep on agent 0 to hit target tps.
+        if self._tps > 0 and self._agent_id == 0:
+            now = time.monotonic()
+            elapsed = now - self._last_tick_time
+            interval = 1.0 / self._tps
+            if self._last_tick_time > 0 and elapsed < interval:
+                time.sleep(interval - elapsed)
+            self._last_tick_time = time.monotonic()
 
         # Apply any LLM-set knobs before action selection.
         if state.resource_bias_from_llm is not None:
@@ -279,20 +291,20 @@ class CvCPolicy(MultiAgentPolicy):
         log_llm: Any = None,
         game_id: str | None = None,
         record_dir: str | None = None,
+        tps: float = 0.0,
         **kwargs: Any,
     ):
-        # Fail loudly on unknown kwargs — silent swallowing (mettagrid's
-        # MultiAgentPolicy takes **kwargs) masked the log-py=1 bug.
         if kwargs:
             raise TypeError(
                 f"CvCPolicy got unknown kwarg(s): {sorted(kwargs)}. "
                 "Known kwargs: device, programs, log, log_py, log_llm, "
-                "game_id, record_dir."
+                "game_id, record_dir, tps."
             )
         super().__init__(policy_env_info, device=device)
         self._programs = programs or all_programs()
         self._agent_policies: dict[int, StatefulAgentPolicy[CvCAgentState]] = {}
         self._llm_client: Any | None = None
+        self._tps = float(tps)
         self._episode_start = time.time()
         self._game_id = game_id if game_id is not None else f"game_{int(time.time())}"
         self._record_dir = record_dir
@@ -345,6 +357,7 @@ class CvCPolicy(MultiAgentPolicy):
                 llm_client=self._llm_client,
                 game_id=self._game_id,
                 recorder=self._recorder,
+                tps=self._tps,
             )
             self._agent_policies[agent_id] = StatefulAgentPolicy(
                 impl,
