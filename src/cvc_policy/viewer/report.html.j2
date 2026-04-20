@@ -150,12 +150,9 @@ input[type="search"] { width: 100%; padding: 4px 6px; background: var(--panel2);
   font-size: 10px; letter-spacing: 0.05em;
   writing-mode: vertical-rl; transform: rotate(180deg);
   text-align: left; padding: 1px 0; }
-#log .step-range-badge { position: absolute; left: 0; top: 0;
-  width: 22px; color: var(--muted); opacity: 0.7;
-  font-size: 9px; font-style: italic; text-align: left;
-  writing-mode: vertical-rl; transform: rotate(180deg);
-  padding: 1px 0; margin-right: 0; }
-#log .line.in-merged-run::before { content: none; }
+#log .step-range-badge { color: var(--muted); opacity: 0.7;
+  font-size: 10px; font-style: italic; margin-left: 8px; }
+#log .line.merged-hidden { display: none; }
 #log .step-marker { padding-left: 28px; }
 /* Follow-up events within the same step that share the agent — the
    agent/role glyphs are suppressed, content sits in the content column. */
@@ -817,54 +814,58 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       .sort()
       .join(';;');
   }
+  // Role phases: actions that belong to the same operational phase.
+  var _ROLE_PHASES = {
+    'mine_carbon': 'mining', 'mine_oxygen': 'mining', 'mine_germanium': 'mining',
+    'mine_silicon': 'mining', 'find_extractors': 'mining', 'deposit_resources': 'mining',
+    'fund_miner_gear_mine_carbon': 'mining', 'fund_miner_gear_mine_oxygen': 'mining',
+    'fund_miner_gear_mine_germanium': 'mining', 'fund_miner_gear_mine_silicon': 'mining',
+    'align_junction': 'aligning', 'find_neutral_junction': 'aligning',
+    'scramble_junction': 'scrambling', 'find_enemy_junction': 'scrambling',
+    'acquire_heart': 'hearts', 'batch_hearts': 'hearts', 'find_hub_for_heart': 'hearts',
+    'retreat_to_hub': 'retreat', 'retreat_hold': 'retreat',
+    'explore': 'explore',
+  };
+  function _actionPhase(line) {
+    var payload = line.dataset.payload || '';
+    return _ROLE_PHASES[payload] || payload;
+  }
+
   function recomputeMerges() {
-    var allMarkers = Array.prototype.slice.call(
-      log.querySelectorAll('.step-marker'));
+    // Collect all visible action lines for the selected agent, group
+    // consecutive lines in the same phase into collapsed runs.
+    var allLines = Array.prototype.slice.call(log.querySelectorAll('.line'));
+    var visible = allLines.filter(function (l) {
+      return !l.classList.contains('hidden') && l.dataset.type === 'action';
+    });
+    // Reset previous merge state.
+    visible.forEach(function (l) {
+      l.classList.remove('merged-hidden', 'in-merged-run');
+      var badge = l.querySelector('.step-range-badge');
+      if (badge) badge.remove();
+      l.classList.remove('merge-summary');
+    });
+    if (visible.length < 2) return;
     var i = 0;
-    while (i < allMarkers.length) {
-      var marker = allMarkers[i];
-      if (marker.classList.contains('hidden')) { i++; continue; }
-      var visible = _linesAfterMarker(marker).filter(function (l) {
-        return !l.classList.contains('hidden');
-      });
-      if (visible.length === 0) { i++; continue; }
-      var key = _stepLineKeys(marker);
-      var step = parseInt(marker.dataset.step, 10);
-      var runEnd = step;
-      var runMarkers = [];
-      var runLines = [];
+    while (i < visible.length) {
+      var start = visible[i];
+      var phase = _actionPhase(start);
       var j = i + 1;
-      while (j < allMarkers.length) {
-        var m2 = allMarkers[j];
-        if (m2.classList.contains('hidden')) { j++; continue; }
-        var step2 = parseInt(m2.dataset.step, 10);
-        if (step2 !== runEnd + 1) break;
-        if (_stepLineKeys(m2) !== key) break;
-        runEnd = step2;
-        runMarkers.push(m2);
-        _linesAfterMarker(m2).forEach(function (l) {
-          if (!l.classList.contains('hidden')) runLines.push(l);
-        });
-        j++;
-      }
-      if (runMarkers.length > 0) {
-        // Hide the start step-marker; show the range as a left-margin
-        // badge on the first visible line, and indent all visible lines
-        // of the run so the range column lines up horizontally.
-        marker.classList.add('merged-hidden');
-        var firstLine = visible[0];
-        visible.forEach(function (l) { l.classList.add('in-merged-run'); });
-        var badge = firstLine.querySelector('.step-range-badge');
-        if (!badge) {
-          badge = document.createElement('span');
-          badge.className = 'step-range-badge';
-          firstLine.insertBefore(badge, firstLine.firstChild);
+      while (j < visible.length && _actionPhase(visible[j]) === phase) j++;
+      var runLen = j - i;
+      if (runLen > 2) {
+        // Collapse: show first line with step range badge, hide middle lines.
+        var startStep = start.dataset.step;
+        var endStep = visible[j - 1].dataset.step;
+        var badge = document.createElement('span');
+        badge.className = 'step-range-badge';
+        badge.textContent = '(' + runLen + ' events, steps ' + startStep + '-' + endStep + ')';
+        start.appendChild(badge);
+        start.classList.add('merge-summary');
+        // Hide all middle lines, keep first and last.
+        for (var k = i + 1; k < j - 1; k++) {
+          visible[k].classList.add('merged-hidden');
         }
-        badge.textContent = '[' + step + '..' + runEnd + ']';
-        runMarkers.forEach(function (m) { m.classList.add('merged-hidden'); });
-        runLines.forEach(function (l) { l.classList.add('merged-hidden'); });
-      } else {
-        marker.removeAttribute('data-step-end');
       }
       i = j;
     }

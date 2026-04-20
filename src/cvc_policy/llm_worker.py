@@ -1,10 +1,10 @@
 """Per-agent LLM coach worker.
 
 Each agent owns one LLMWorker running in a dedicated thread. The worker holds a
-single episode-long Anthropic conversation. It loops calling `get_status` to
-compute a dashboard from the recorder's event stream, then `patch` to write
-strategic knobs back onto the agent's state. The Python tick loop only reads
-those knobs — it never waits on the LLM.
+single episode-long Anthropic conversation. Each turn includes the current game
+status and world model. The LLM's only tool is `patch` to write strategic knobs
+back onto the agent's state. The Python tick loop only reads those knobs — it
+never waits on the LLM.
 """
 
 from __future__ import annotations
@@ -36,39 +36,12 @@ _SYSTEM = (
     "- role: miner/aligner/scrambler (null = keep current)\n"
     "- objective: expand/defend/economy_bootstrap (null = keep current)\n"
     "\n"
-    "Work in a loop: call `get_status` to see the current game state, "
-    "reason briefly, then call `patch` when strategy should change. "
-    "Call `get_world_model` to see all known entities (extractors, junctions, etc.).\n"
-    "Call `get_status` again to see updated state. Repeat for the episode.\n"
-    "\n"
+    "Each message includes the current game status and world model. "
+    "Analyze the state and call `patch` when strategy should change. "
     "Be concise. Only patch when the situation warrants a change."
 )
 
 _TOOLS = [
-    {
-        "name": "get_status",
-        "description": (
-            "Get a dashboard of the agent's current game state: step, HP, "
-            "position, role, gear, team resources, junction counts, team "
-            "composition, and recent actions."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "get_world_model",
-        "description": (
-            "Get the agent's world model: all known entities (extractors, "
-            "junctions, hubs, walls, stations) with their type, position, "
-            "owner/team, attributes, and last_seen_step."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
     {
         "name": "patch",
         "description": (
@@ -248,25 +221,29 @@ class LLMWorker:
         return {"entities": entities, "count": len(entities)}
 
     def _dispatch_tool(self, name: str, args: dict) -> dict:
-        if name == "get_status":
-            return self._tool_get_status(args)
-        elif name == "get_world_model":
-            return self._tool_get_world_model(args)
-        elif name == "patch":
+        if name == "patch":
             return self._tool_patch(args)
         return {"error": f"unknown tool: {name}"}
 
     # ── main loop ───────────────────────────────────────────────────────
 
+    def _build_state_message(self) -> str:
+        """Build a user message with current status + world model."""
+        status = _build_status(self._recorder, self._agent_id)
+        wm = self._tool_get_world_model({})
+        return (
+            f"=== Agent {self._agent_id} Status ===\n"
+            f"{json.dumps(status, indent=2)}\n\n"
+            f"=== World Model ({wm.get('count', 0)} entities) ===\n"
+            f"{json.dumps(wm.get('entities', []))}\n\n"
+            "Analyze and call patch if strategy should change, or say 'no change'."
+        )
+
     def _initial_messages(self) -> list[dict]:
         return [
             {
                 "role": "user",
-                "content": (
-                    f"You are coaching agent {self._agent_id} for this episode. "
-                    "Call get_status to see the current game state, then patch "
-                    "when strategy should change. Loop until the episode ends."
-                ),
+                "content": self._build_state_message(),
             }
         ]
 
@@ -351,11 +328,11 @@ class LLMWorker:
             messages.append({"role": "user", "content": tool_results})
         else:
             messages.append(
-                {"role": "user", "content": "Continue. Call get_status."}
+                {"role": "user", "content": self._build_state_message()}
             )
             stop = True
 
-        # Cooldown: avoid hammering the API when get_status returns instantly.
+        # Cooldown: avoid hammering the API.
         if not stop:
             time.sleep(_STATUS_COOLDOWN_S)
 
