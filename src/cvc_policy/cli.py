@@ -537,6 +537,9 @@ def play(
     policy_args: list[str] = typer.Option(
         [], "--policy-args", help="Policy kwarg KEY=VALUE (repeatable)."
     ),
+    tps: float = typer.Option(
+        5.0, "--tps", help="Target ticks per second (0 = unlimited)."
+    ),
     record: bool = typer.Option(
         True, "--record/--no-record", help="Write a run folder under --runs-root."
     ),
@@ -565,6 +568,9 @@ def play(
         k, val = parse_override(spec)
         policy_kwargs[k] = val
 
+    if tps > 0:
+        tick_ms = int(1000 / tps)
+        mission_overrides["action_timeout_ms"] = tick_ms
     synthetic = Scenario(
         name="manual",
         tier=-1,
@@ -598,9 +604,11 @@ def play(
             raise typer.Exit(1) from exc
         raise
     typer.echo(f"manual run: {run.run_dir}")
+    actual_tps = (run.result.get('steps') or 0) / max(run.result.get('duration_s') or 1, 0.01)
     typer.echo(
         f"steps: {run.result.get('steps')}  "
-        f"duration: {run.result.get('duration_s') or 0.0:.2f}s"
+        f"duration: {run.result.get('duration_s') or 0.0:.2f}s  "
+        f"tps: {actual_tps:.1f}"
     )
     if view:
         _view_run_dir(run.run_dir)

@@ -398,6 +398,7 @@ def render_html(run_dir: Path) -> str:
         "scenario": result.get("scenario") or "manual",
         "status": status,
         "duration_s": float(result.get("duration_s") or 0.0),
+        "tps": float(result.get("steps") or 0) / max(float(result.get("duration_s") or 1), 0.01),
         "cogs": cogs,
         "seed": result.get("seed"),
         "mission": result.get("mission", ""),

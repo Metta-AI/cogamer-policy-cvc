@@ -171,6 +171,7 @@ def test_play_builds_scenario_from_cli_args(tmp_path, monkeypatch) -> None:
             "--seed", "7",
             "--override", "max_steps=30",
             "--policy-args", "log_py=true",
+            "--tps", "0",
             "--runs-root", str(tmp_path),
         ],
     )
