@@ -301,6 +301,10 @@ class CvCPolicy(MultiAgentPolicy):
             raise RuntimeError(
                 "CvCPolicy requires an LLM. Set ANTHROPIC_API_KEY or COGORA_ANTHROPIC_KEY."
             )
+        import logging
+
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
         import anthropic
 
         self._llm_client = anthropic.Anthropic(api_key=api_key)
