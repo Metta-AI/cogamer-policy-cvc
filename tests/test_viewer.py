@@ -1056,12 +1056,12 @@ def test_no_merge_when_multiple_events_on_a_step() -> None:
 
 
 def test_no_merge_when_payload_differs() -> None:
-    """Different roles on otherwise identical events should not merge."""
+    """Different summaries should not merge."""
     from cvc_policy.viewer.render import _group_by_step, _merge_duplicate_steps
 
     events = [
-        _dup_event(5, role="miner"),
-        _dup_event(6, role="aligner"),
+        _dup_event(5, summary="mine_carbon"),
+        _dup_event(6, summary="deposit_resources"),
     ]
     groups = _group_by_step(events, max_step=6)
     merged = _merge_duplicate_steps(groups)

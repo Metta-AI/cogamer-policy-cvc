@@ -30,7 +30,7 @@ def test_fmt_action_event():
         "type": "action",
         "payload": {"role": "miner", "summary": "mine_carbon"},
     }
-    assert fmt(ev) == "[py] a0 step=3 action role=miner summary=mine_carbon"
+    assert fmt(ev) == "[py] a0 step=3 action mine_carbon"
 
 
 def test_fmt_team_event_has_no_agent_prefix():

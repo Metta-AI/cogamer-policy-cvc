@@ -66,6 +66,14 @@ main > section, main > .right-col { margin: 0 4px; }
   color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 4px;
   line-height: 1; vertical-align: middle; }
 .step-view-tick .collapse-btn:hover { color: var(--accent); }
+.get-status-btn { background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--muted); cursor: pointer; font-size: 10px;
+  padding: 1px 6px; margin-left: 8px; }
+.get-status-btn:hover { color: var(--accent); border-color: var(--accent); }
+.status-output { background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px; margin-top: 6px; font-size: 11px;
+  color: var(--fg); overflow-x: auto; white-space: pre-wrap;
+  max-height: 300px; overflow-y: auto; }
 section { background: var(--panel); border: 1px solid var(--border);
   border-radius: 6px; padding: 10px;
   display: flex; flex-direction: column; min-height: 0; }
@@ -327,7 +335,8 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
 
   <div class="right-col">
   <section class="step-view-card collapsed" id="step-view-card">
-    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="false" title="collapse/expand step view">+</button> <span class="step-text">step 0</span></div>
+    <div class="step-view-tick" id="step-view-current"><button type="button" id="step-view-toggle" class="collapse-btn" aria-expanded="false" title="collapse/expand step view">+</button> <span class="step-text">step 0</span> <button type="button" id="get-status-btn" class="get-status-btn" title="Show get_status() for current agent at this step">status</button>
+    <pre id="status-output" class="status-output" style="display:none"></pre></div>
     <div id="inventory-panel" class="inventory-panel">
       {% for tg in team_groups %}
       <div class="team-block" data-team="{{ tg.team }}">
@@ -762,16 +771,19 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       var visible = lines.filter(function (l) { return !l.classList.contains('hidden'); });
       if (visible.length === 0) marker.classList.add('hidden');
     });
-    // Hide step-range gaps that have no visible neighbors (steps on
-    // both sides are hidden, so the range is just noise).
+    // Hide step-range gaps unless both sides have a visible line.
     log.querySelectorAll('.step-range').forEach(function (range) {
-      var prev = range.previousElementSibling;
-      while (prev && prev.classList.contains('hidden')) prev = prev.previousElementSibling;
-      var next = range.nextElementSibling;
-      while (next && next.classList.contains('hidden')) next = next.nextElementSibling;
-      var prevVisible = prev && (prev.classList.contains('line') || prev.classList.contains('step-marker'));
-      var nextVisible = next && (next.classList.contains('line') || next.classList.contains('step-marker'));
-      range.classList.toggle('hidden', !prevVisible || !nextVisible);
+      function _hasVisibleLine(el, direction) {
+        while (el) {
+          if (el.classList.contains('line') && !el.classList.contains('hidden')) return true;
+          if (el.classList.contains('step-range')) return false; // hit another range, stop
+          el = el[direction];
+        }
+        return false;
+      }
+      var before = _hasVisibleLine(range.previousElementSibling, 'previousElementSibling');
+      var after = _hasVisibleLine(range.nextElementSibling, 'nextElementSibling');
+      range.classList.toggle('hidden', !before || !after);
     });
     recomputeMerges();
   }
@@ -1143,6 +1155,20 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       btn.innerHTML = collapsed ? '+' : '&minus;';
     });
   })();
+
+  // get_status button: show dashboard for selected agent at current step.
+  document.getElementById('get-status-btn').addEventListener('click', function () {
+    var out = document.getElementById('status-output');
+    if (out.style.display !== 'none') {
+      out.style.display = 'none';
+      return;
+    }
+    var agent = parseInt(agentSelect.value, 10);
+    if (isNaN(agent)) agent = 0;
+    var status = getStatus(agent, currentStep);
+    out.textContent = JSON.stringify(status, null, 2);
+    out.style.display = 'block';
+  });
 
   (function setupReplay() {
     var iframe = document.getElementById('mettascope');

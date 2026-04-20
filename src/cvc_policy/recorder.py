@@ -25,6 +25,24 @@ def _fmt_payload_default(payload: dict[str, Any]) -> str:
     return " ".join(f"{k}={_fmt_value(v)}" for k, v in payload.items())
 
 
+def _fmt_payload_action(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary", "")
+    prev = payload.get("from")
+    if prev:
+        return f"{prev} -> {summary}"
+    return summary
+
+
+def _fmt_payload_target(payload: dict[str, Any]) -> str:
+    kind = payload.get("kind", "?")
+    pos = payload.get("pos", "?")
+    prev_kind = payload.get("from_kind")
+    if prev_kind:
+        prev_pos = payload.get("from_pos", "?")
+        return f"{prev_kind}@{prev_pos} -> {kind}@{pos}"
+    return f"{kind}@{pos}"
+
+
 def _fmt_payload_patch_applied(payload: dict[str, Any]) -> str:
     applied = payload.get("applied") or {}
     parts = [f"{k}={_fmt_value(v)}" for k, v in applied.items()]
@@ -52,6 +70,8 @@ def _fmt_payload_llm_turn(payload: dict[str, Any]) -> str:
 
 
 _PAYLOAD_RENDERERS: dict[str, Any] = {
+    "action": _fmt_payload_action,
+    "target": _fmt_payload_target,
     "patch_applied": _fmt_payload_patch_applied,
     "llm_turn": _fmt_payload_llm_turn,
 }
