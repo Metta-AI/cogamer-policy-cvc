@@ -342,6 +342,42 @@ def _run_serve_foreground(run_dir: Path, port: int) -> None:
         httpd.server_close()
 
 
+def _open_or_reload(url: str) -> None:
+    """Open a URL, reusing an existing Chrome tab with report.html if possible."""
+    import platform
+    import subprocess
+    import webbrowser
+
+    if platform.system() != "Darwin":
+        webbrowser.open(url)
+        return
+    # AppleScript: find a Chrome tab whose URL contains "report.html" and
+    # navigate it to the new URL. Falls back to webbrowser.open.
+    script = f'''
+    tell application "Google Chrome"
+        set found to false
+        repeat with w in windows
+            repeat with t in tabs of w
+                if URL of t contains "report.html" then
+                    set URL of t to "{url}"
+                    set active tab index of w to index of t
+                    set found to true
+                    exit repeat
+                end if
+            end repeat
+            if found then exit repeat
+        end repeat
+        if not found then
+            open location "{url}"
+        end if
+    end tell
+    '''
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=3)
+    except Exception:
+        webbrowser.open(url)
+
+
 def _view_run_dir(
     run_dir: Path, *, no_open: bool = False, no_server: bool = False
 ) -> None:
@@ -365,7 +401,7 @@ def _view_run_dir(
         out = render(run_dir)
         typer.echo(f"wrote {out}")
         if not no_open:  # pragma: no cover - launches a real browser
-            webbrowser.open("file://" + str(out.resolve()))
+            _open_or_reload("file://" + str(out.resolve()))
         return
 
     # Child mode: spawned by a prior invocation; run the blocking loop.
@@ -436,9 +472,8 @@ def _view_run_dir(
     )
 
     if not no_open:
-        # Give the child a moment to bind before opening the tab.
         time.sleep(0.3)
-        webbrowser.open(url)
+        _open_or_reload(url)
 
 
 @app.command("view")
