@@ -314,7 +314,7 @@ def render_html(run_dir: Path) -> str:
     # tested helper but is no longer called here.
     # Exclude inventory events from the log — they power the step view
     # panel via embedded JSON but are too noisy for the event log.
-    _LOG_EXCLUDE_TYPES = {"inventory"}
+    _LOG_EXCLUDE_TYPES = {"inventory", "target"}
     log_events = [e for e in events if e["type"] not in _LOG_EXCLUDE_TYPES]
     idx_of = {id(e): i for i, e in enumerate(events)}
     raw_groups = _group_by_step(log_events, max_step)
