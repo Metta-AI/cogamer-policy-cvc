@@ -484,18 +484,16 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
         latestInv = e.payload || {};
       }
       if (e.type === 'action' && recentActions.length < 5) {
-        var s = (e.payload || {}).summary || '';
-        var f = (e.payload || {})['from'] || '';
-        recentActions.unshift(f ? (f + ' -> ' + s) : s);
+        recentActions.unshift('step ' + e.step + ': ' + ((e.payload || {}).summary || ''));
       }
       if (e.type === 'target' && recentTargets.length < 3) {
         var p = e.payload || {};
-        recentTargets.unshift((p.kind || '?') + ' @ ' + JSON.stringify(p.pos || '?'));
+        recentTargets.unshift('step ' + e.step + ': ' + (p.kind || '?') + '@' + JSON.stringify(p.pos || '?'));
       }
     }
     var inv = latestInv.inventory || {};
     var gear = {};
-    ['miner','aligner','scrambler','scout','heart','solar'].forEach(function (k) {
+    ['miner','aligner','scrambler','scout','heart'].forEach(function (k) {
       if (inv[k] && parseInt(inv[k]) > 0) gear[k] = parseInt(inv[k]);
     });
     return {
@@ -504,6 +502,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       position: latestInv.pos,
       role: latestInv.role || 'unknown',
       gear: gear,
+      inventory: {energy: parseInt(inv.energy || 0), solar: parseInt(inv.solar || 0)},
       team_resources: latestInv.team_resources || {},
       junctions: latestInv.junctions || {},
       recent_actions: recentActions,
@@ -694,12 +693,7 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     currentStep = step;
     scrub.value = step;
     stepLabel.textContent = 'step ' + step + ' / ' + maxStep;
-    var stepViewCurrent = document.getElementById('step-view-current');
-    if (stepViewCurrent) {
-      var stepText = stepViewCurrent.querySelector('.step-text');
-      if (stepText) stepText.textContent = 'step ' + step;
-      else stepViewCurrent.textContent = 'step ' + step;
-    }
+    if (typeof _updateStepHeader === 'function') _updateStepHeader();
     // Forward to the embedded mettascope unless we were *called* because
     // mettascope told us to move (suppressMettascopePush guards that).
     // Optional `agent` selects + centers on that agent in mettascope.
@@ -771,20 +765,26 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       var visible = lines.filter(function (l) { return !l.classList.contains('hidden'); });
       if (visible.length === 0) marker.classList.add('hidden');
     });
-    // Hide step-range gaps unless both sides have a visible line.
-    log.querySelectorAll('.step-range').forEach(function (range) {
-      function _hasVisibleLine(el, direction) {
-        while (el) {
-          if (el.classList.contains('line') && !el.classList.contains('hidden')) return true;
-          if (el.classList.contains('step-range')) return false; // hit another range, stop
-          el = el[direction];
+    // Hide all step-range gaps, then show only those between two visible lines.
+    log.querySelectorAll('.step-range').forEach(function (r) { r.classList.add('hidden'); });
+    // Walk all elements once: track last visible line, and when we hit a
+    // hidden range followed later by a visible line, un-hide ranges between.
+    var pendingRanges = [];
+    var sawVisibleBefore = false;
+    var children = log.children;
+    for (var ci = 0; ci < children.length; ci++) {
+      var el = children[ci];
+      if (el.classList.contains('step-range')) {
+        pendingRanges.push(el);
+      } else if (el.classList.contains('line') && !el.classList.contains('hidden')) {
+        if (sawVisibleBefore && pendingRanges.length > 0) {
+          // Show exactly one range between two visible sections.
+          pendingRanges[0].classList.remove('hidden');
         }
-        return false;
+        pendingRanges = [];
+        sawVisibleBefore = true;
       }
-      var before = _hasVisibleLine(range.previousElementSibling, 'previousElementSibling');
-      var after = _hasVisibleLine(range.nextElementSibling, 'nextElementSibling');
-      range.classList.toggle('hidden', !before || !after);
-    });
+    }
     recomputeMerges();
   }
 
@@ -1164,11 +1164,28 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
       return;
     }
     var agent = parseInt(agentSelect.value, 10);
-    if (isNaN(agent)) agent = 0;
+    if (isNaN(agent)) return;
     var status = getStatus(agent, currentStep);
     out.textContent = JSON.stringify(status, null, 2);
     out.style.display = 'block';
   });
+
+  // Update step panel header to show selected agent.
+  function _updateStepHeader() {
+    var stepText = document.querySelector('#step-view-current .step-text');
+    var statusBtn = document.getElementById('get-status-btn');
+    var agent = agentSelect.value;
+    if (stepText) {
+      var label = 'step ' + currentStep;
+      if (agent !== '') label = 'a' + agent + ' @ step ' + currentStep;
+      stepText.textContent = label;
+    }
+    if (statusBtn) statusBtn.style.display = (agent === '') ? 'none' : '';
+    // Hide status output when agent changes.
+    var out = document.getElementById('status-output');
+    if (out) out.style.display = 'none';
+  }
+  agentSelect.addEventListener('change', _updateStepHeader);
 
   (function setupReplay() {
     var iframe = document.getElementById('mettascope');
@@ -1379,33 +1396,17 @@ footer button, footer select { background: var(--panel2); color: var(--fg);
     toolbar.title = 'toggle pretty-print';
     var body = document.createElement('span');
     body.className = 'line-details-body';
-    var isLlmTurn = evt.type === 'llm_turn';
     function _render(pretty) {
-      if (isLlmTurn && pretty) {
-        // Render LLM turn as readable prose + tool calls
-        var parts = [];
-        if (payload.text) parts.push(payload.text);
-        if (payload.tool_calls && payload.tool_calls.length) {
-          parts.push('\n--- tool calls ---');
-          payload.tool_calls.forEach(function (tc) {
-            parts.push(tc.tool + '(' + JSON.stringify(tc.input) + ')');
-          });
-        }
-        parts.push('\n[stop_reason=' + (payload.stop_reason || '?')
-          + '  latency=' + (payload.latency_ms || 0) + 'ms]');
-        body.textContent = parts.join('\n');
-      } else {
-        try {
-          body.textContent = pretty
-            ? JSON.stringify(payload, null, 2)
-            : JSON.stringify(payload);
-        } catch (err) {
-          body.textContent = String(payload);
-        }
+      try {
+        body.textContent = pretty
+          ? JSON.stringify(payload, null, 2)
+          : JSON.stringify(payload);
+      } catch (err) {
+        body.textContent = String(payload);
       }
       details.classList.toggle('pretty', !!pretty);
     }
-    _render(isLlmTurn);
+    _render(true);
     toolbar.addEventListener('click', function (e) {
       e.stopPropagation();
       _render(!details.classList.contains('pretty'));

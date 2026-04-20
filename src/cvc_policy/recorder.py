@@ -26,21 +26,11 @@ def _fmt_payload_default(payload: dict[str, Any]) -> str:
 
 
 def _fmt_payload_action(payload: dict[str, Any]) -> str:
-    summary = payload.get("summary", "")
-    prev = payload.get("from")
-    if prev:
-        return f"{prev} -> {summary}"
-    return summary
+    return payload.get("summary", "")
 
 
 def _fmt_payload_target(payload: dict[str, Any]) -> str:
-    kind = payload.get("kind", "?")
-    pos = payload.get("pos", "?")
-    prev_kind = payload.get("from_kind")
-    if prev_kind:
-        prev_pos = payload.get("from_pos", "?")
-        return f"{prev_kind}@{prev_pos} -> {kind}@{pos}"
-    return f"{kind}@{pos}"
+    return f"{payload.get('kind', '?')}@{payload.get('pos', '?')}"
 
 
 def _fmt_payload_patch_applied(payload: dict[str, Any]) -> str:

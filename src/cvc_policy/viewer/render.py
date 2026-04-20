@@ -326,7 +326,6 @@ def render_html(run_dir: Path) -> str:
         lines: list[dict[str, Any]] = []
         for e in g["events"]:
             lines.append(_as_line(idx_of[id(e)], e))
-        lines = _merge_action_target(lines)
         prev_agent_in_step: Any = object()
         for ln in lines:
             # Hide the agent+role glyphs when the preceding line in this

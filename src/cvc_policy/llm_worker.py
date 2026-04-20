@@ -107,14 +107,12 @@ def _build_status(recorder: EventRecorder, agent_id: int) -> dict[str, Any]:
             continue
         if e["type"] == "action" and len(recent_actions) < 5:
             summary = e.get("payload", {}).get("summary", "")
-            prev = e.get("payload", {}).get("from", "")
-            if prev:
-                recent_actions.append(f"{prev} -> {summary}")
-            else:
-                recent_actions.append(summary)
+            tick = e.get("step", 0)
+            recent_actions.append(f"step {tick}: {summary}")
         elif e["type"] == "target" and len(recent_targets) < 3:
             p = e.get("payload", {})
-            recent_targets.append(f"{p.get('kind', '?')} @ {p.get('pos', '?')}")
+            tick = e.get("step", 0)
+            recent_targets.append(f"step {tick}: {p.get('kind', '?')}@{p.get('pos', '?')}")
         if len(recent_actions) >= 5 and len(recent_targets) >= 3:
             break
     recent_actions.reverse()
@@ -127,8 +125,8 @@ def _build_status(recorder: EventRecorder, agent_id: int) -> dict[str, Any]:
             step = e.get("step", 0)
             break
 
-    # Gear list from inventory keys
-    gear_types = {"miner", "aligner", "scrambler", "scout", "heart", "solar"}
+    # Gear = role gear only (not solar/energy/resources)
+    gear_types = {"miner", "aligner", "scrambler", "scout", "heart"}
     gear = {k: int(v) for k, v in inv.items() if k in gear_types and int(v) > 0}
 
     return {
