@@ -197,13 +197,18 @@ class LLMWorker:
         )
         return {"ok": True, "applied": applied}
 
-    def _tool_get_world_model(self, args: dict) -> dict:
+    _SKIP_ATTRS = {"global_x", "global_y", "aoe_mask"}
+
+    def _tool_get_world_model(self, args: dict, *, exclude_types: set[str] | None = None) -> dict:
         gs = self._state.game_state
         if gs is None:
             return {"entities": []}
         wm = gs.world_model
+        skip = exclude_types or set()
         entities = []
         for entity in wm.entities():
+            if entity.entity_type in skip:
+                continue
             e: dict[str, Any] = {
                 "type": entity.entity_type,
                 "pos": list(entity.position),
@@ -213,9 +218,8 @@ class LLMWorker:
                 e["owner"] = entity.owner
             if entity.team:
                 e["team"] = entity.team
-            # Include relevant attributes (resource amounts, etc.)
             for k, v in entity.attributes.items():
-                if k not in ("global_x", "global_y"):
+                if k not in self._SKIP_ATTRS:
                     e[k] = v
             entities.append(e)
         return {"entities": entities, "count": len(entities)}
@@ -227,10 +231,12 @@ class LLMWorker:
 
     # ── main loop ───────────────────────────────────────────────────────
 
+    _LLM_EXCLUDE_TYPES = {"wall"}
+
     def _build_state_message(self) -> str:
         """Build a user message with current status + world model."""
         status = _build_status(self._recorder, self._agent_id)
-        wm = self._tool_get_world_model({})
+        wm = self._tool_get_world_model({}, exclude_types=self._LLM_EXCLUDE_TYPES)
         return (
             f"=== Agent {self._agent_id} Status ===\n"
             f"{json.dumps(status, indent=2)}\n\n"

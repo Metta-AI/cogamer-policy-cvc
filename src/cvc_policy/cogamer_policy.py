@@ -387,7 +387,7 @@ class CvCPolicy(MultiAgentPolicy):
                 if entity.team:
                     e["team"] = entity.team
                 for k, v in entity.attributes.items():
-                    if k not in ("global_x", "global_y"):
+                    if k not in ("global_x", "global_y", "aoe_mask"):
                         e[k] = v
                 entities.append(e)
             self._recorder.emit(
