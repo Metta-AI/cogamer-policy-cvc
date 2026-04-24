@@ -183,9 +183,46 @@ def test_patch_tool_emits_patch_applied_event():
     )
     client.queue_end_turn()
     recorder = EventRecorder()
-    worker = _run_worker(client, recorder=recorder)
+    _run_worker(client, recorder=recorder)
     patch_events = [e for e in recorder.events if e["type"] == "patch_applied"]
     assert len(patch_events) == 1
     assert patch_events[0]["payload"]["applied"] == {"resource_bias": "carbon"}
     assert patch_events[0]["payload"]["rationale"] == "low carbon supply"
     assert patch_events[0]["stream"] == "llm"
+
+
+def test_world_model_skips_territory_observation_attrs():
+    client = FakeAnthropicClient()
+    entity = SimpleNamespace(
+        entity_type="agent",
+        position=(10, 20),
+        last_seen_step=7,
+        owner="team_0",
+        team="team_0",
+        attributes={
+            "global_x": 10,
+            "global_y": 20,
+            "territory:here": 1,
+            "territory:east": 1,
+            "energy": 80,
+        },
+    )
+    state = CvCAgentState(
+        game_state=SimpleNamespace(
+            world_model=SimpleNamespace(entities=lambda: [entity])
+        )
+    )
+    worker = LLMWorker(client, agent_id=0, state=state)
+    world_model = worker._tool_get_world_model({})
+
+    assert world_model["count"] == 1
+    assert world_model["entities"] == [
+        {
+            "type": "agent",
+            "pos": [10, 20],
+            "last_seen": 7,
+            "owner": "team_0",
+            "team": "team_0",
+            "energy": 80,
+        }
+    ]

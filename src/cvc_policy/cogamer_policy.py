@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from cvc_policy.game_state import GameState
-from cvc_policy.llm_worker import LLMWorker
+from cvc_policy.llm_worker import LLMWorker, WORLD_MODEL_ATTR_SKIP
 from cvc_policy.programs import Program, all_programs
 from cvc_policy.recorder import EventRecorder
 from mettagrid.policy.policy import MultiAgentPolicy, StatefulAgentPolicy, StatefulPolicyImpl
@@ -423,7 +423,7 @@ class CvCPolicy(MultiAgentPolicy):
                 if entity.team:
                     e["team"] = entity.team
                 for k, v in entity.attributes.items():
-                    if k not in ("global_x", "global_y", "aoe_mask"):
+                    if k not in WORLD_MODEL_ATTR_SKIP:
                         e[k] = v
                 entities.append(e)
             self._recorder.emit(
