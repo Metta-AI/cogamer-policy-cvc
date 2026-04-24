@@ -276,7 +276,7 @@ def _truthy(value: Any) -> bool:
 
 
 class CvCPolicy(MultiAgentPolicy):
-    """Top-level CvC policy. Spawns one LLMWorker thread per agent."""
+    """Top-level CvC policy. Spawns LLM workers when Anthropic is configured."""
 
     short_names = ["cvc", "cvc-policy"]
     minimum_action_timeout_ms = 30_000
@@ -333,9 +333,7 @@ class CvCPolicy(MultiAgentPolicy):
     def _init_llm(self) -> None:
         api_key = os.environ.get("COGORA_ANTHROPIC_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError(
-                "CvCPolicy requires an LLM. Set ANTHROPIC_API_KEY or COGORA_ANTHROPIC_KEY."
-            )
+            return
         import logging
 
         logging.getLogger("httpx").setLevel(logging.WARNING)

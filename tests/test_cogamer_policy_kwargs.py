@@ -75,3 +75,11 @@ def test_episode_end_is_idempotent(tmp_path):
     assert len(events) == 1
 
 
+def test_cvc_policy_without_llm_key_skips_worker(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("COGORA_ANTHROPIC_KEY", raising=False)
+    p = CvCPolicy(_fake_policy_env_info())
+    assert p._llm_client is None
+    state = p.agent_policy(0)._base_policy.initial_agent_state()
+    assert state.worker is None
+
