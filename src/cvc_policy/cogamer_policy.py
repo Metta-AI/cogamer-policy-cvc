@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from cvc_policy.game_state import GameState
-from cvc_policy.llm_worker import LLMWorker
+from cvc_policy.llm_worker import LLMWorker, WORLD_MODEL_ATTR_SKIP
 from cvc_policy.programs import Program, all_programs
 from cvc_policy.recorder import EventRecorder
 from mettagrid.policy.policy import MultiAgentPolicy, StatefulAgentPolicy, StatefulPolicyImpl
@@ -276,7 +276,7 @@ def _truthy(value: Any) -> bool:
 
 
 class CvCPolicy(MultiAgentPolicy):
-    """Top-level CvC policy. Spawns one LLMWorker thread per agent."""
+    """Top-level CvC policy. Spawns LLM workers when Anthropic is configured."""
 
     short_names = ["cvc", "cvc-policy"]
     minimum_action_timeout_ms = 30_000
@@ -333,9 +333,7 @@ class CvCPolicy(MultiAgentPolicy):
     def _init_llm(self) -> None:
         api_key = os.environ.get("COGORA_ANTHROPIC_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError(
-                "CvCPolicy requires an LLM. Set ANTHROPIC_API_KEY or COGORA_ANTHROPIC_KEY."
-            )
+            return
         import logging
 
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -423,7 +421,7 @@ class CvCPolicy(MultiAgentPolicy):
                 if entity.team:
                     e["team"] = entity.team
                 for k, v in entity.attributes.items():
-                    if k not in ("global_x", "global_y", "aoe_mask"):
+                    if k not in WORLD_MODEL_ATTR_SKIP:
                         e[k] = v
                 entities.append(e)
             self._recorder.emit(

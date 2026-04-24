@@ -73,6 +73,16 @@ _TOOLS = [
     },
 ]
 
+WORLD_MODEL_ATTR_SKIP = {
+    "global_x",
+    "global_y",
+    "territory:here",
+    "territory:north",
+    "territory:south",
+    "territory:west",
+    "territory:east",
+}
+
 
 def _build_status(recorder: EventRecorder, agent_id: int) -> dict[str, Any]:
     """Compute a dense dashboard from the recorder's event stream."""
@@ -197,7 +207,7 @@ class LLMWorker:
         )
         return {"ok": True, "applied": applied}
 
-    _SKIP_ATTRS = {"global_x", "global_y", "aoe_mask"}
+    _SKIP_ATTRS = WORLD_MODEL_ATTR_SKIP
 
     def _tool_get_world_model(self, args: dict, *, exclude_types: set[str] | None = None) -> dict:
         gs = self._state.game_state
