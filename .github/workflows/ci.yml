@@ -11,6 +11,8 @@ jobs:
           python-version: "3.12"
       - name: Install Nim for mettagrid build
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenal-dev
           NIM_VERSION="$(curl -fsSL https://raw.githubusercontent.com/Metta-AI/mettagrid/main/.nim-version)"
           NIMBY_VERSION="$(curl -fsSL https://raw.githubusercontent.com/Metta-AI/mettagrid/main/.nimby-version)"
           case "$(uname -m)" in
